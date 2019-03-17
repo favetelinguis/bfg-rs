@@ -1,0 +1,10 @@
+[package]
+name = "bfg-app"
+version = "0.1.0"
+authors = ["Henrik Larsson <reg@henkelarsson.se>"]
+edition = "2018"
+
+[dependencies]
+
+bfg-core = { path = "../bfg-core"}
+bfg-ig = { path = "../bfg-ig"}
