@@ -5,6 +5,10 @@ authors = ["Henrik Larsson <reg@henkelarsson.se>"]
 edition = "2018"
 
 [dependencies]
+termion = "*"
+tui = "0.5.0"
+log = "0.4" 
+stderrlog = "0.4" # should be dev dependency
 
 bfg-core = { path = "../bfg-core"}
 bfg-ig = { path = "../bfg-ig"}
