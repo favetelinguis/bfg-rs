@@ -1,10 +1,10 @@
 [package]
-name = "bfg-ig"
+name = "ig-rs"
 version = "0.1.0"
 authors = ["Henrik Larsson <reg@henkelarsson.se>"]
 edition = "2018"
 
 [dependencies]
 reqwest = "0.9.12"
-
-bfg-core = { path = "../bfg-core"}
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

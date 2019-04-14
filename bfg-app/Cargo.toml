@@ -4,6 +4,9 @@ version = "0.1.0"
 authors = ["Henrik Larsson <reg@henkelarsson.se>"]
 edition = "2018"
 
+[features]
+default = ["bfg-ig"]
+
 [dependencies]
 termion = "*"
 tui = "0.5.0"
@@ -11,4 +14,4 @@ log = "0.4"
 stderrlog = "0.4" # should be dev dependency
 
 bfg-core = { path = "../bfg-core"}
-bfg-ig = { path = "../bfg-ig"}
+bfg-ig = { path = "../bfg-ig", optional = true }
