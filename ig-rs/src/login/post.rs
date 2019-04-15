@@ -8,7 +8,7 @@ new_type!(
 
 from!(
     @PostQueryBuilder
-        -> Session = "session"
+        -> Session = "session|3"
     @Session
         -> RefreshToken = "refresh-token"
 );

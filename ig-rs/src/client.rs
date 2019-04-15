@@ -1,6 +1,8 @@
 use reqwest::{Client, Method, Request, Result, Url, StatusCode, Body};
 use reqwest::header::{HeaderMap};
 use serde::de::DeserializeOwned;
+use serde_json::{Map, Value};
+use serde_json::json;
 
 use std::cell::RefCell;
 use std::error::Error;
@@ -30,7 +32,7 @@ pub struct IG {
     // TODO I could have an enum here saying if we are logged, mayby just Optional key
     account: String,
     api_key: String,
-    token: String,
+    token: Option<String>,
     client: Rc<Client>,
 }
 
@@ -44,7 +46,7 @@ impl IG {
     /// Create a new IG client struct. It takes a type that can convert into
     /// an &str (`String` or `Vec<u8>` for example). As long as the function is
     /// given a valid API Token your requests will work.
-    pub fn new<T>(token: T, api_key: T, account: T) -> Self
+    pub fn new<T>(api_key: T, account: T) -> Self
     where
         T: ToString,
     {
@@ -52,14 +54,9 @@ impl IG {
         Self {
             account: account.to_string(),
             api_key: api_key.to_string(),
-            token: token.to_string(),
+            token: None,
             client: Rc::new(client),
         }
-    }
-
-    /// Get the currently set Authorization Token
-    pub fn get_token(&self) -> &str {
-        &self.token
     }
 
     /// Change the currently set Authorization Token using a type that can turn
@@ -68,7 +65,17 @@ impl IG {
     where
         T: ToString,
     {
-        self.token = token.to_string();
+        self.token = Some(token.to_string());
+    }
+
+    /// Initialize the client calling login endpoint and setting the oauth token on the client
+    pub fn initialize(&mut self, user: String, password: String) -> Result<String> {
+        let mut body = Map::new();
+        body.insert(String::from("identifier") ,json!(user));
+        body.insert(String::from("password") ,json!(password));
+        let (_headers, status, res) = self.post(body).session().execute::<Value>()?;
+        self.set_token(res.unwrap()["oauthToken"]["access_token"].as_str().unwrap());
+        Ok(String::from(status.as_str()))
     }
 
     pub fn get(&self) -> GetQueryBuilder {
@@ -112,8 +119,6 @@ impl<'g> PostQueryBuilder<'g> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::{Map, Value};
-    use serde_json::json;
     use std::env;
     #[test]
     fn it_works() {
@@ -121,12 +126,11 @@ mod tests {
         let pwd = env::var("IG_PWD").unwrap();
         let api_key = env::var("IG_API_KEY").unwrap();
         let account = env::var("IG_ACCOUNT").unwrap();
-        let ig = IG::new("Secret", &api_key, &account);
-        let mut body = Map::new();
-        body.insert(String::from("identifier") ,json!(usr));
-        body.insert(String::from("password") ,json!(pwd));
-        // TODO put a method directrly on IG that called initialize that sets post and sets the token
-        let res = ig.post(body).session().execute::<Value>();
-        println!("{:?}", res);
+        let mut ig = IG::new(&api_key, &account);
+        let status = ig.initialize(usr, pwd);
+        println!("The initialize status was {:?}", status);
+
+        let (_headers, status, res) = ig.get().session().execute::<Value>().unwrap();
+        println!("The get status: {:?} with body {:?}", status, res);
     }
 }

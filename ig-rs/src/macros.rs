@@ -28,12 +28,33 @@ macro_rules! from {
         }
         )*$(
         impl <'g> From<$f<'g>> for $i2<'g> {
+            // TODO put the versioning in the dsl instead of having it in a string split
             fn from(mut f: $f<'g>) -> Self {
-                f.request.borrow_mut()
-                    .url_mut()
-                    .path_segments_mut()
-                    .unwrap()
-                    .push($e2);
+                let mut split_it = $e2.split("|");
+                if let Some(path) = split_it.next() {
+                    f.request.borrow_mut()
+                        .url_mut()
+                        .path_segments_mut()
+                        .unwrap()
+                        .push(path);
+                }
+                match split_it.next() {
+                    Some(version) => {
+                        println!("Here1");
+                        f.request.borrow_mut()
+                            .headers_mut()
+                            .insert(HeaderName::from_static("version"),
+                                    HeaderValue::from_static(version));
+                    }
+                    None => {
+                        println!("Here2");
+                        f.request.borrow_mut()
+                            .headers_mut()
+                            .insert(HeaderName::from_static("version"),
+                                    HeaderValue::from_static("1"));
+
+                    }
+                }
                 Self {
                     request: f.request,
                     client: f.client,
@@ -47,9 +68,13 @@ macro_rules! from {
         $(
         impl <'g> From<&'g IG> for $t<'g> {
             fn from(ig: &'g IG) -> Self {
-                use reqwest::header::{ ACCEPT, AUTHORIZATION, CONTENT_TYPE, USER_AGENT, HeaderName, HeaderValue };
+                use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, USER_AGENT, HeaderName, HeaderValue };
                 let mut req = Request::new($p, Url::parse("https://demo-api.ig.com/gateway/deal").unwrap());
                 let headers = req.headers_mut();
+                if let Some(token) = & ig.token {
+                    let auth = String::from("Bearer ") + &token;
+                    headers.insert(AUTHORIZATION, HeaderValue::from_str(&auth).unwrap());
+                }
                 headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
                 headers.insert(USER_AGENT, HeaderValue::from_static("ig-rs"));
                 headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
@@ -159,7 +184,7 @@ macro_rules! exec {
 macro_rules! imports {
     () => {
         use reqwest::{Client, Method, Request, Result, Url, StatusCode};
-        use reqwest::header::{HeaderMap};
+        use reqwest::header::{HeaderMap, HeaderValue, HeaderName};
         use serde::de::DeserializeOwned;
         use std::cell::RefCell;
         use std::rc::Rc;
