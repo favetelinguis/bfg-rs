@@ -1,95 +1,106 @@
 /// Automatically generate From impls for types given using a small DSL like
 /// macro
+//TODO I need to handle errors when building up request and I dont want to return Result objects
+// TryFrom TryInto should fix this or I could check what github-rs is doing right now its no error checks.
 macro_rules! from {
-    ($(@$f: ident
-     $( ?> $i1: ident = $e1: tt )*
-     $( => $t: ident )*
-     $( -> $i2: ident = $e2: tt )* )*) => (
-        $($(
-        impl <'g> From<$f<'g>> for $t<'g> {
-            fn from(f: $f<'g>) -> Self {
-                Self {
-                    request: f.request,
-                    client: f.client,
-                    parameter: None,
-                }
-            }
-        }
-        )*$(
-        impl <'g> From<$f<'g>> for $i1<'g> {
-            fn from(mut f: $f<'g>) -> Self {
-                // TODO this is how I should build query params not impl atm
-                    Self {
-                        request: f.request,
-                        client: f.client,
-                        parameter: None,
-                    }
-                }
-        }
-        )*$(
-        impl <'g> From<$f<'g>> for $i2<'g> {
-            // TODO put the versioning in the dsl instead of having it in a string split
-            fn from(mut f: $f<'g>) -> Self {
-                let mut split_it = $e2.split("|");
-                if let Some(path) = split_it.next() {
-                    f.request.borrow_mut()
-                        .url_mut()
-                        .path_segments_mut()
-                        .unwrap()
-                        .push(path);
-                }
-                match split_it.next() {
-                    Some(version) => {
-                        println!("Here1");
-                        f.request.borrow_mut()
-                            .headers_mut()
-                            .insert(HeaderName::from_static("version"),
-                                    HeaderValue::from_static(version));
-                    }
-                    None => {
-                        println!("Here2");
-                        f.request.borrow_mut()
-                            .headers_mut()
-                            .insert(HeaderName::from_static("version"),
-                                    HeaderValue::from_static("1"));
-
-                    }
-                }
-                Self {
-                    request: f.request,
-                    client: f.client,
-                    parameter: None,
-                }
-            }
-        }
-        )*)*
-    );
-    ($(@$t: ident => $p: expr)*) => (
-        $(
-        impl <'g> From<&'g IG> for $t<'g> {
-            fn from(ig: &'g IG) -> Self {
-                use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, USER_AGENT, HeaderName, HeaderValue };
-                let mut req = Request::new($p, Url::parse("https://demo-api.ig.com/gateway/deal").unwrap());
-                let headers = req.headers_mut();
-                if let Some(token) = & ig.token {
-                    let auth = String::from("Bearer ") + &token;
-                    headers.insert(AUTHORIZATION, HeaderValue::from_str(&auth).unwrap());
-                }
-                headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-                headers.insert(USER_AGENT, HeaderValue::from_static("ig-rs"));
-                headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
-                headers.insert(HeaderName::from_static("x-ig-api-key"), ig.api_key.parse().unwrap());
-                headers.insert(HeaderName::from_static("ig-account-id"), ig.account.parse().unwrap());
-                // TODO check the enum of client if im logged in, if im not logged in return error
-                Self {
-                    request: RefCell::new(req),
-                    client: & ig.client,
-                    parameter: None,
-                }
-            }
-        }
+    (
+        $(@$f: ident
+            $( ?> $i1: ident = $e1: tt )*
+            $( => $t: ident )*
+            $( -> $i2: ident = $e2: tt )*
         )*
-    );
+    )=> {
+            $(
+                $(
+                    impl <'g> From<$f<'g>> for $t<'g> {
+                        fn from(f: $f<'g>) -> Self {
+                            Self {
+                                request: f.request,
+                                client: f.client,
+                                parameter: None,
+                            }
+                        }
+                    }
+                )*
+                $(
+                    impl <'g> From<$f<'g>> for $i1<'g> {
+                        fn from(mut f: $f<'g>) -> Self {
+                            // TODO this is how I should build query params not impl atm
+                            Self {
+                                request: f.request,
+                                client: f.client,
+                                parameter: None,
+                            }
+                        }
+                    }
+                )*
+                $(
+                    impl <'g> From<$f<'g>> for $i2<'g> {
+                        // TODO put the versioning in the dsl instead of having it in a string split
+                        fn from(mut f: $f<'g>) -> Self {
+                            let mut split_it = $e2.split("|");
+                            if let Some(path) = split_it.next() {
+                                f.request.borrow_mut()
+                                    .url_mut()
+                                    .path_segments_mut()
+                                    .unwrap()
+                                    .push(path);
+                            }
+                            match split_it.next() {
+                                Some(version) => {
+                                    println!("Here1");
+                                    f.request.borrow_mut()
+                                        .headers_mut()
+                                        .insert(HeaderName::from_static("version"),
+                                                HeaderValue::from_static(version));
+                                }
+                                None => {
+                                    println!("Here2");
+                                    f.request.borrow_mut()
+                                        .headers_mut()
+                                        .insert(HeaderName::from_static("version"),
+                                                HeaderValue::from_static("1"));
+
+                                }
+                            }
+                            Self {
+                                request: f.request,
+                                client: f.client,
+                                parameter: None,
+                            }
+                        }
+                    }
+                )*
+            )*
+    };
+    (
+        $(@$t: ident => $p: expr)*
+    )=> {
+            $(
+                impl <'g> From<&'g IG> for $t<'g> {
+                    fn from(ig: &'g IG) -> Self {
+                        use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, USER_AGENT, HeaderName, HeaderValue };
+                        let mut req = Request::new($p, Url::parse("https://demo-api.ig.com/gateway/deal").unwrap());
+                        let headers = req.headers_mut();
+                        if let Some(token) = & ig.token {
+                            let auth = String::from("Bearer ") + &token;
+                            headers.insert(AUTHORIZATION, HeaderValue::from_str(&auth).unwrap());
+                        }
+                        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+                        headers.insert(USER_AGENT, HeaderValue::from_static("ig-rs"));
+                        headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
+                        headers.insert(HeaderName::from_static("x-ig-api-key"), ig.api_key.parse().unwrap());
+                        headers.insert(HeaderName::from_static("ig-account-id"), ig.account.parse().unwrap());
+                        // TODO check the enum of client if im logged in, if im not logged in return error
+                        Self {
+                            request: RefCell::new(req),
+                            client: & ig.client,
+                            parameter: None,
+                        }
+                    }
+                }
+            )*
+    };
 }
 
 /// Using a small DSL like macro generate an impl for a given type
@@ -131,12 +142,6 @@ macro_rules! func_client{
             self.into()
         }
     );
-    ($i: ident, $t: ident, $e: ident) => (
-        pub fn $i(mut self, $e: &str) -> $t<'g> {
-            // TODO not sure when this is used but its not implemented
-            self.into()
-        }
-    );
 }
 
 // TODO Why do i need the 'g here?
@@ -167,6 +172,9 @@ macro_rules! exec {
             where
                 T: DeserializeOwned,
             {
+                //TODO in original code
+                //core used try_borrow_mut to make sure only a single query can be executed at time
+                //do i need to think about this with client?
                 let client = self.client;
                 let req = self.request.into_inner();
                 let mut res = client.execute(req)?;

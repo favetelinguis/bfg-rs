@@ -70,6 +70,7 @@ impl IG {
 
     /// Initialize the client calling login endpoint and setting the oauth token on the client
     pub fn initialize(&mut self, user: String, password: String) -> Result<String> {
+        // TODO move this as a object method and return a new instance with token set
         let mut body = Map::new();
         body.insert(String::from("identifier") ,json!(user));
         body.insert(String::from("password") ,json!(password));
@@ -126,6 +127,7 @@ mod tests {
         let pwd = env::var("IG_PWD").unwrap();
         let api_key = env::var("IG_API_KEY").unwrap();
         let account = env::var("IG_ACCOUNT").unwrap();
+        // TODO rethink how to do initialize i dont want to have to do IG mut?
         let mut ig = IG::new(&api_key, &account);
         let status = ig.initialize(usr, pwd);
         println!("The initialize status was {:?}", status);
