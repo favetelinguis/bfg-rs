@@ -1,7 +1,0 @@
-[package]
-name = "bfg-core"
-version = "0.1.0"
-authors = ["Henrik Larsson <reg@henkelarsson.se>"]
-edition = "2018"
-
-[dependencies]
