@@ -10,7 +10,7 @@ pub struct TradeUpdate {
     pub entry: String,
 }
 
-#[cfg_attr(test, mockall::automock)]
+#[mockall::automock]
 pub trait BfgService {
     fn publish_market_update_event(&mut self, update: MarketUpdate);
     fn publish_account_update_event(&mut self, update: AccountUpdate);
@@ -32,7 +32,7 @@ pub struct Or {
     low: usize,
 }
 
-#[cfg_attr(test, mockall::automock)]
+#[mockall::automock]
 pub trait BrokerageApi {
     fn get_or(&self) -> Option<Or>;
     fn place_order(&self, order: OrderDetails);

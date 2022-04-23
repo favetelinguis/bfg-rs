@@ -1,6 +1,6 @@
 use super::ports::*;
 
-struct ConnectionDetails {
+pub struct ConnectionDetails {
     username: String,
     password: String,
 }
@@ -21,7 +21,7 @@ struct MarketValues {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct SystemValues {
+pub struct SystemValues {
     market: MarketValues,
     or_high: usize,
     or_low: usize,

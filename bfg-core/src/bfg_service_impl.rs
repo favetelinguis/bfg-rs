@@ -8,7 +8,7 @@ pub struct BfgServiceImpl<A: BrokerageApi> {
 
 impl<A> BfgService for BfgServiceImpl<A>
 where
-    A: BrokerageApi + Clone,
+    A: BrokerageApi,
 {
     fn publish_market_update_event(&mut self, update: MarketUpdate) {
         self.state = do_action(self.state, Action::MarketEvent(update))
@@ -31,13 +31,14 @@ mod tests {
 
     #[test]
     fn test_bfg_with_broker_mock() {
-        let mut brokerage_api = MockBrokerageApi::new();
-        brokerage_api
-            .expect_publish_markte_update_event()
+        let mut mock = MockBrokerageApi::new();
+        mock.expect_publish_markte_update_event()
+            .with(eq(4))
+            .times(1)
             .returning(|state, action| State::Init);
 
         let mut sut = BfgServiceImpl {
-            brokerage: brokerage_api,
+            brokerage: mock,
             state: State::Init,
         };
         let actual = sut.publish_market_update_event(MarketUpdate { high: 4 });
