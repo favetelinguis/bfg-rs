@@ -1,12 +1,9 @@
-use crate::bfg_service_impl::BfgServiceImpl;
-use crate::domain::State;
+use bfg_core::bfg_service_impl::BfgServiceImpl;
+use bfg_core::domain::State;
 use crate::ig_brokerage_api::IgBrokerageApi;
 use crate::warp_bfg_controller::{init_routes};
 
-mod bfg_service_impl;
-mod domain;
 mod ig_brokerage_api;
-mod ports;
 mod warp_bfg_controller;
 
 #[tokio::main]

@@ -1,15 +1,18 @@
 use reqwest::Client;
-use crate::ports::{BrokerageApi, Or, OrderDetails};
+use bfg_core::ports::{BrokerageApi, Or, OrderDetails};
 
+#[derive(Clone)]
 struct Session {
     token: String,
 }
 
+#[derive(Clone)]
 enum ConnectionState {
     NoSession,
     HasSession(Session),
 }
 
+#[derive(Clone)]
 pub struct IgBrokerageApi {
     pub http_client: reqwest::Client,
     state: ConnectionState,

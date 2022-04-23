@@ -13,14 +13,14 @@ pub enum Action {
     TradeEvent(TradeUpdate),
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct MarketValues {
-    id: String,
+    id: usize,
     open_time: usize,
     close_time: usize,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct SystemValues {
     market: MarketValues,
     or_high: usize,
@@ -33,7 +33,7 @@ impl SystemValues {
             or_high,
             or_low,
             market: MarketValues {
-                id: String::from(""),
+                id: 33,
                 open_time: 5,
                 close_time: 8,
             },
@@ -41,7 +41,7 @@ impl SystemValues {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SystemState {
     Init,                // Await OR to be created
     Setup(SystemValues), // Await LTP to go over or_high or below or_low
@@ -52,7 +52,7 @@ pub enum SystemState {
 }
 
 // TODO this will be handled by adapter Remove here and only make this about system state
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum State {
     Init,
     SessionCreated(SystemState),

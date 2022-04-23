@@ -3,12 +3,12 @@ use crate::domain::{do_action, Action, State};
 
 pub struct BfgServiceImpl<A: BrokerageApi> {
     pub brokerage: A,
-    pub state: State,
+    pub state: State, // Should this be Arc<RwLock<State>>
 }
 
 impl<A> BfgService for BfgServiceImpl<A>
 where
-    A: BrokerageApi + Sync + Send,
+    A: BrokerageApi + Clone,
 {
     fn publish_market_update_event(&mut self, update: MarketUpdate) {
         self.state = do_action(self.state, Action::MarketEvent(update))
