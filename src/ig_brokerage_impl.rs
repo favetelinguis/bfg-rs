@@ -49,6 +49,7 @@ impl IgBrokerageApi {
 
 /// This testsuite test agains the testenvironment of IG but its real integration tests
 /// Is there a way to exclude there tests from ordinary cargo test?
+/// Maybe instead of integration tests there should be an example
 #[cfg(test)]
 mod tests {
     use super::*;

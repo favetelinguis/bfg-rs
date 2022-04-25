@@ -16,7 +16,7 @@ impl<A> BfgService for BfgServiceImpl<A>
 
     fn publish_update_event(&mut self, update: Action) {
         let mut actions = vec![update]; // actions resulting from external actions
-        for action in actions {
+        for action in actions.clone() {
             let (next_state, decision) = do_action(self.state.clone(), action);
             // Execute decisions against brokerage api
             match decision {
@@ -48,7 +48,7 @@ mod tests {
             state: State::Setup(SystemValues::new(33, 4)),
         };
         sut.publish_update_event(Action::Start);
-        let expected = State::Setup(SystemValues::new(33, 4));
+        let expected = State::Setup(SystemValues::new(3, 2));
         assert_eq!(expected, sut.state);
     }
 }

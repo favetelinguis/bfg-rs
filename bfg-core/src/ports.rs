@@ -1,15 +1,19 @@
+#[derive(Copy, Clone)]
 pub struct MarketUpdate {
     pub high: usize,
 }
 
+#[derive(Copy, Clone)]
 pub struct AccountUpdate {
     pub money: usize,
 }
 
+#[derive(Copy, Clone)]
 pub struct TradeUpdate {
-    pub entry: String,
+    pub entry: usize,
 }
 
+#[derive(Copy, Clone)]
 pub enum Action {
     Start,
     MarketEvent(MarketUpdate),
@@ -70,6 +74,7 @@ impl OrderDetails {
     }
 }
 
+#[derive(Copy, Clone)]
 pub struct Or {
     high: usize,
     low: usize,

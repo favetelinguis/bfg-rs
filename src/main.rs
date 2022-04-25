@@ -17,3 +17,7 @@ async fn main() {
 }
 
 //TODO should have rust integration tests for this file check book how to do that.
+
+/// Questions
+/// How are move handled in patter matching, looks like the value is moved? A(a) => .. a is moved?
+/// How to put service into handlers and have some parts mutable?
