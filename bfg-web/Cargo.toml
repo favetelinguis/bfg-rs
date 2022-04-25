@@ -1,0 +1,14 @@
+[package]
+name = "bfg-web"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bfg-core = { path = "../bfg-core"}
+ig-brokerage-adapter = { path = "../ig-brokerage-adapter"}
+serde = { version = "1.0", features = ["derive"] }
+warp = "0.3"
+tokio = { version = "1.1.1", features = ["full"] }
+parking_lot = "0.10.0"

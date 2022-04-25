@@ -40,7 +40,7 @@ impl IgBrokerageApi {
 
     fn do_request(&self) {
         // Handle retry and error handling etc here
-        match self.state {
+        match self.state.clone() {
             ConnectionState::NoSession => todo!(),
             ConnectionState::HasSession(session) => todo!(),
         }
