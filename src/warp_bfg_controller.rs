@@ -43,7 +43,7 @@ async fn return_error(r: Rejection) -> Result<impl Reply, Rejection> {
     }
 }
 
-pub fn init_routes<A: BfgService>(service: A) {
+pub fn init_routes<A: BfgServiceImpl>(service: A) {
     let market_event = warp::post()
         .and(warp::path("event/market"))
         .and(warp::path::end())
@@ -78,7 +78,7 @@ struct IgMarketUpdate {
     bla: usize
 }
 
-pub fn handle_market_event<A: BfgService>(service: &mut A, body: IgMarketUpdate) -> Result<impl warp::Reply, warp::Rejection> {
+pub fn handle_market_event<A: BfgServiceImpl>(service: &mut A, body: IgMarketUpdate) -> Result<impl warp::Reply, warp::Rejection> {
     service.publish_market_update_event(body); // TODO should have use trait into or something to convert between types?
     Ok(warp::reply::with_status("Market event handled", StatusCode::OK))
 }
@@ -88,7 +88,7 @@ struct IgAccountUpdate {
     bla: usize
 }
 
-pub fn handle_account_event<A: BfgService>(service: A, body: IgAccountUpdate) -> Result<impl warp::Reply, warp::Rejection> {
+pub fn handle_account_event<A: BfgServiceImpl>(service: A, body: IgAccountUpdate) -> Result<impl warp::Reply, warp::Rejection> {
     service.publish_account_update_event(body); // TODO should have use trait into or something to convert between types?
     Ok(warp::reply::with_status("Account event handled", StatusCode::OK))
 }
@@ -98,7 +98,7 @@ struct IgTradeUpdate {
     bla: usize
 }
 
-pub fn handle_trade_event<A: BfgService>(service: A, body: IgTradeUpdate) -> Result<impl warp::Reply, warp::Rejection> {
+pub fn handle_trade_event<A: BfgServiceImpl>(service: A, body: IgTradeUpdate) -> Result<impl warp::Reply, warp::Rejection> {
     service.publish_trade_update_event(body); // TODO should have use trait into or something to convert between types?
     Ok(warp::reply::with_status("Trade event handled", StatusCode::OK))
 }

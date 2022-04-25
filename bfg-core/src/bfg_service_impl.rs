@@ -1,5 +1,5 @@
 use super::ports::*;
-use crate::domain::{do_action, Action, State};
+use crate::domain::*;
 
 pub struct BfgServiceImpl<A: BrokerageApi> {
     pub brokerage: A,
@@ -7,20 +7,26 @@ pub struct BfgServiceImpl<A: BrokerageApi> {
 }
 
 impl<A> BfgService for BfgServiceImpl<A>
-where
-    A: BrokerageApi,
+    where
+        A: BrokerageApi,
 {
-    fn publish_market_update_event(&mut self, update: MarketUpdate) {
-        self.state = do_action(self.state, Action::MarketEvent(update))
-        // TODO this is the place where I have access to the brokerage api, all interaction with brokerage is done here
-    }
-
-    fn publish_account_update_event(&mut self, update: AccountUpdate) {
+    fn setup_market(market: MarketValues) {
         todo!()
     }
 
-    fn publish_trade_update_event(&mut self, update: TradeUpdate) {
-        todo!()
+    fn publish_update_event(&mut self, update: Action) {
+        let mut actions = vec![update]; // actions resulting from external actions
+        for action in actions {
+            let (next_state, decision) = do_action(self.state.clone(), action);
+            // Execute decisions against brokerage api
+            match decision {
+                Decision::NoOp => (),
+                Decision::Buy(orderDetails) => self.brokerage.place_order(orderDetails),
+                Decision::Sell(orderDetails) => self.brokerage.place_order(orderDetails),
+                Decision::SetupOr => actions.push(Action::OrSetup(self.brokerage.get_or())),
+            }
+            self.state = next_state;
+        }
     }
 }
 
@@ -32,17 +38,17 @@ mod tests {
     #[test]
     fn test_bfg_with_broker_mock() {
         let mut mock = MockBrokerageApi::new();
-        mock.expect_publish_markte_update_event()
-            .with(eq(4))
+        mock.expect_get_or()
+            .with()
             .times(1)
-            .returning(|state, action| State::Init);
+            .returning(|| Option::Some(Or::new(3,2)));
 
         let mut sut = BfgServiceImpl {
             brokerage: mock,
-            state: State::Init,
+            state: State::Setup(SystemValues::new(33, 4)),
         };
-        let actual = sut.publish_market_update_event(MarketUpdate { high: 4 });
-        let expected = State::Init;
+        sut.publish_update_event(Action::Start);
+        let expected = State::Setup(SystemValues::new(33, 4));
         assert_eq!(expected, sut.state);
     }
 }
