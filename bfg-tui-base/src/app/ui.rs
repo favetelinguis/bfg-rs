@@ -21,8 +21,8 @@ B: Backend,
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(3),
-            Constraint::Min(10),
-            Constraint::Min(10),
+            Constraint::Length(10),
+            Constraint::Percentage(100),
         ].as_ref())
         .split(size);
 
