@@ -10,7 +10,12 @@ impl<A> BfgService for BfgServiceImpl<A>
     where
         A: BrokerageApi,
 {
-    fn setup_market(market: MarketValues) {
+    fn market_details(&self) -> MarketValues {
+        match self.state {
+            _ => MarketValues::new()
+        }
+    }
+    fn setup_market(&mut self, market: MarketValues) {
         todo!()
     }
 

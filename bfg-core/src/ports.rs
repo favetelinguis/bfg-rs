@@ -1,3 +1,5 @@
+use crate::errors::BrokerageError;
+
 #[derive(Copy, Clone)]
 pub struct MarketUpdate {
     pub high: usize,
@@ -25,11 +27,11 @@ pub enum Action {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MarketValues {
-    id: usize,
-    open_time: usize,
-    close_time: usize,
-    spread: usize,
-    cost_to_trade: usize
+    pub id: usize,
+    pub open_time: usize,
+    pub close_time: usize,
+    pub spread: usize,
+    pub cost_to_trade: usize
 }
 
 impl MarketValues {
@@ -47,7 +49,8 @@ impl MarketValues {
 
 #[cfg_attr(test, mockall::automock)]
 pub trait BfgService {
-    fn setup_market(market: MarketValues);
+    fn market_details(&self) -> MarketValues;
+    fn setup_market(&mut self, market: MarketValues);
     fn publish_update_event(&mut self, update: Action);
 }
 
@@ -88,6 +91,7 @@ impl Or {
 
 #[cfg_attr(test, mockall::automock)]
 pub trait BrokerageApi {
-    fn get_or(&self) -> Option<Or>;
-    fn place_order(&self, order: OrderDetails);
+    fn get_or(&mut self) -> Option<Or>;
+    fn place_order(&mut self, order: OrderDetails);
+    fn get_market_details(&mut self) -> Result<(), BrokerageError>;
 }

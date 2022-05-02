@@ -8,7 +8,8 @@ edition = "2021"
 [dependencies]
 bfg-core = { path = "../bfg-core"}
 ig-brokerage-adapter = { path = "../ig-brokerage-adapter"}
-serde = { version = "1.0", features = ["derive"] }
-warp = "0.3"
-tokio = { version = "1.1.1", features = ["full"] }
-parking_lot = "0.10.0"
+actix-web = "3.1.0"
+actix-rt = "1.1.1"
+serde = { version = "1.0.110", features = ["derive"] }
+chrono = {version = "0.4.11", features = ["serde"]}
+dotenvy = "0.15.1"
