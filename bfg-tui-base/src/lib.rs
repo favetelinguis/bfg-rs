@@ -34,14 +34,19 @@ pub fn start_ui(app: &Arc<RwLock<App>>) -> Result<()> {
 
     // Render loop
     loop {
-        let mut app = app.write().unwrap();
         // Draw UI
-        terminal.draw(|rect| ui::draw(rect, &app))?;
+        terminal.draw(|rect| ui::draw(rect, &app.read().unwrap()))?;
 
         // Handle user input
         let result = match events.next()? {
-            InputEvent::Input(key) => app.do_action(key),
-            InputEvent::Tick => app.update_on_tick(),
+            InputEvent::Input(key) => {
+                let mut app = app.write().unwrap();
+                app.do_action(key)
+            },
+            InputEvent::Tick => {
+                let mut app = app.write().unwrap();
+                app.update_on_tick()
+            },
         };
         if result == AppReturn::Exit {
             break;

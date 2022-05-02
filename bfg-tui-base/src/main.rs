@@ -1,6 +1,7 @@
 use std::sync::{Arc, mpsc, RwLock};
 use std::thread;
 use eyre::Result;
+use log::LevelFilter;
 use bfg_tui_base::app::App;
 use bfg_tui_base::io::handler::IoHandler;
 use bfg_tui_base::io::IoEvent;
@@ -12,6 +13,10 @@ fn main() -> Result<()> {
     // Create app
     let app = Arc::new(RwLock::new(App::new(sync_io_tx)));
     let app_ui = Arc::clone(&app);
+
+    // Configure log
+    tui_logger::init_logger(LevelFilter::Debug).unwrap();
+    tui_logger::set_default_level(log::LevelFilter::Debug);
 
     // Handle I/O
     thread::spawn(move || {
