@@ -27,19 +27,19 @@ impl AppState {
     }
 
     pub fn incr_sleep(&mut self) {
-        if let Self::Initialized {counter_sleep, .. } = self {
+        if let Self::Initialized { counter_sleep, .. } = self {
             *counter_sleep += 1;
         }
     }
 
     pub fn incr_tick(&mut self) {
-        if let Self::Initialized {counter_tick, .. } = self {
+        if let Self::Initialized { counter_tick, .. } = self {
             *counter_tick += 1;
         }
     }
 
     pub fn count_sleep(&self) -> Option<u32> {
-        if let Self::Initialized {counter_sleep, ..} = self {
+        if let Self::Initialized { counter_sleep, .. } = self {
             Some(*counter_sleep)
         } else {
             None
@@ -47,7 +47,7 @@ impl AppState {
     }
 
     pub fn count_tick(&self) -> Option<u64> {
-        if let Self::Initialized {counter_tick, ..} = self {
+        if let Self::Initialized { counter_tick, .. } = self {
             Some(*counter_tick)
         } else {
             None
@@ -55,22 +55,22 @@ impl AppState {
     }
 
     pub fn duration(&self) -> Option<&Duration> {
-        if let Self::Initialized {duration, ..} = self {
+        if let Self::Initialized { duration, .. } = self {
             Some(duration)
         } else {
             None
         }
     }
-    
+
     pub fn increment_delay(&mut self) {
-        if let Self::Initialized {duration, ..} = self {
+        if let Self::Initialized { duration, .. } = self {
             let secs = (duration.as_secs() + 1).clamp(1, 10);
             *duration = Duration::from_secs(secs);
         }
     }
-    
+
     pub fn decrement_delay(&mut self) {
-        if let Self::Initialized {duration, ..} = self {
+        if let Self::Initialized { duration, .. } = self {
             let secs = (duration.as_secs() - 1).clamp(1, 10);
             *duration = Duration::from_secs(secs);
         }

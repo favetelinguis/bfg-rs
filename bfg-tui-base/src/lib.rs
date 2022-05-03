@@ -1,13 +1,13 @@
-use std::io::stdout;
-use std::sync::{Arc, RwLock};
-use std::time::Duration;
-use eyre::Result;
-use tui::backend::CrosstermBackend;
-use tui::Terminal;
-use crate::app::{App, AppReturn, ui};
+use crate::app::{ui, App, AppReturn};
 use crate::inputs::events::Events;
 use crate::inputs::InputEvent;
 use crate::io::IoEvent;
+use eyre::Result;
+use std::io::stdout;
+use std::sync::{Arc, RwLock};
+use std::time::Duration;
+use tui::backend::CrosstermBackend;
+use tui::Terminal;
 
 pub mod app;
 pub mod inputs;
@@ -42,11 +42,11 @@ pub fn start_ui(app: &Arc<RwLock<App>>) -> Result<()> {
             InputEvent::Input(key) => {
                 let mut app = app.write().unwrap();
                 app.do_action(key)
-            },
+            }
             InputEvent::Tick => {
                 let mut app = app.write().unwrap();
                 app.update_on_tick()
-            },
+            }
         };
         if result == AppReturn::Exit {
             break;

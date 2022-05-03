@@ -1,10 +1,10 @@
+use crate::io::IoEvent;
+use crate::App;
+use eyre::Result;
+use log::{error, info};
 use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::Duration;
-use log::{error, info};
-use crate::App;
-use crate::io::IoEvent;
-use eyre::Result;
 
 pub struct IoHandler {
     app: Arc<RwLock<App>>,

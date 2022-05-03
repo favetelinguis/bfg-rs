@@ -1,9 +1,9 @@
+use crate::inputs::key::Key;
+use crate::inputs::InputEvent;
+use crossterm::event;
 use std::sync::mpsc::{channel, Receiver, RecvError, Sender};
 use std::thread;
 use std::time::Duration;
-use crossterm::event;
-use crate::inputs::InputEvent;
-use crate::inputs::key::Key;
 
 pub struct Events {
     rx: Receiver<InputEvent>,
@@ -28,7 +28,7 @@ impl Events {
                 event_tx.send(InputEvent::Tick).unwrap();
             }
         });
-        Events {rx, _tx: tx}
+        Events { rx, _tx: tx }
     }
 
     /// Attempts to read an event.

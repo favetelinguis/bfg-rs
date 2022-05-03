@@ -1,19 +1,27 @@
+use crate::inputs::key::Key;
+use crate::ui::menu::MenuItem;
 use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Display;
 use std::slice::Iter;
-use crate::inputs::key::Key;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum Action {
     Quit,
     Sleep,
+    MenuChange(MenuItem),
 }
 
 impl Action {
     /// All avaliable actions
     pub fn iterator() -> Iter<'static, Action> {
-        static ACTIONS: [Action; 2] = [Action::Quit, Action::Sleep];
+        static ACTIONS: [Action; 5] = [
+            Action::Quit,
+            Action::Sleep,
+            Action::MenuChange(MenuItem::Home),
+            Action::MenuChange(MenuItem::Logs),
+            Action::MenuChange(MenuItem::Help),
+        ];
         ACTIONS.iter()
     }
 
@@ -21,7 +29,10 @@ impl Action {
     pub fn keys(&self) -> &[Key] {
         match self {
             Action::Quit => &[Key::Ctrl('c'), Key::Char('q')],
-            Action::Sleep=> &[Key::Char('s')],
+            Action::Sleep => &[Key::Char('s')],
+            Action::MenuChange(MenuItem::Home) => &[Key::Char('h')],
+            Action::MenuChange(MenuItem::Logs) => &[Key::Char('l')],
+            Action::MenuChange(MenuItem::Help) => &[Key::Char('?')],
         }
     }
 }
@@ -50,7 +61,10 @@ impl Display for Action {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let str = match self {
             Action::Quit => "Quit",
-            Action::Sleep=> "Sleep",
+            Action::Sleep => "Sleep",
+            Action::MenuChange(MenuItem::Home) => "Menu|Home",
+            Action::MenuChange(MenuItem::Logs) => "Menu|Logs",
+            Action::MenuChange(MenuItem::Help) => "Menu|Help",
         };
         write!(f, "{}", str)
     }
@@ -70,7 +84,7 @@ impl From<Vec<Action>> for Actions {
                     Some(vec) => vec.push(*action),
                     None => {
                         map.insert(*key, vec![*action]);
-                    },
+                    }
                 }
             }
         }
@@ -84,7 +98,8 @@ impl From<Vec<Action>> for Actions {
                     .collect::<Vec<_>>()
                     .join(", ");
                 format!("Conflict key {:?} with actions {}", key, actions)
-            }).collect::<Vec<_>>();
+            })
+            .collect::<Vec<_>>();
 
         if !errors.is_empty() {
             panic!("{}", errors.join("; "))

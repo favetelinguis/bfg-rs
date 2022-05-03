@@ -1,11 +1,11 @@
-use std::sync::{Arc, mpsc, RwLock};
-use std::thread;
-use eyre::Result;
-use log::LevelFilter;
 use bfg_tui_base::app::App;
 use bfg_tui_base::io::handler::IoHandler;
 use bfg_tui_base::io::IoEvent;
 use bfg_tui_base::start_ui;
+use eyre::Result;
+use log::LevelFilter;
+use std::sync::{mpsc, Arc, RwLock};
+use std::thread;
 
 fn main() -> Result<()> {
     // Channel for IoEvent

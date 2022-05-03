@@ -1,13 +1,15 @@
-use std::sync::mpsc;
-use log::{debug, error, warn};
 use crate::app::actions::{Action, Actions};
 use crate::app::state::AppState;
 use crate::inputs::key::Key;
 use crate::io::IoEvent;
+use crate::ui::menu::MenuItem;
+use crate::ui::menu::MenuItem::{Help, Logs};
+use log::{debug, error, warn};
+use std::sync::mpsc;
 
 pub mod actions;
-pub mod ui;
 pub mod state;
+pub mod ui;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum AppReturn {
@@ -20,6 +22,7 @@ pub struct App {
     is_loading: bool,
     actions: Actions,
     state: AppState,
+    active_menu_item: MenuItem,
 }
 
 impl App {
@@ -28,7 +31,14 @@ impl App {
         let actions = vec![Action::Quit].into();
         let state = AppState::default();
         let is_loading = false;
-        Self {actions, state, is_loading, io_tx}
+        let active_menu_item = MenuItem::Home;
+        Self {
+            actions,
+            state,
+            is_loading,
+            io_tx,
+            active_menu_item,
+        }
     }
 
     pub fn dispatch(&mut self, action: IoEvent) {
@@ -53,6 +63,10 @@ impl App {
                     }
                     AppReturn::Continue
                 }
+                Action::MenuChange(menu_item) => {
+                    self.active_menu_item = menu_item.clone();
+                    AppReturn::Continue
+                }
             }
         } else {
             warn!("No action associated to {:?}", key);
@@ -70,12 +84,23 @@ impl App {
         &self.state
     }
 
-    pub fn actions(&self) -> &Actions{
+    pub fn active_menu_item(&self) -> &MenuItem {
+        &self.active_menu_item
+    }
+
+    pub fn actions(&self) -> &Actions {
         &self.actions
     }
 
     pub fn initialized(&mut self) {
-        self.actions = vec![Action::Quit, Action::Sleep].into();
+        self.actions = vec![
+            Action::Quit,
+            Action::Sleep,
+            Action::MenuChange(MenuItem::Home),
+            Action::MenuChange(Logs),
+            Action::MenuChange(Help),
+        ]
+        .into();
         self.state = AppState::initialized()
     }
 
