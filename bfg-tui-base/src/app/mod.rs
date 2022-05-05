@@ -5,7 +5,9 @@ use crate::io::IoEvent;
 use crate::ui::menu::MenuItem;
 use crate::ui::menu::MenuItem::{Help, Logs};
 use log::{debug, error, warn};
-use std::sync::mpsc;
+use std::sync::{Arc, mpsc, RwLock};
+use bfg_core::bfg_service_impl::BfgServiceImpl;
+use crate::DummyBrokerageApi;
 
 pub mod actions;
 pub mod state;
@@ -23,11 +25,12 @@ pub struct App {
     actions: Actions,
     state: AppState,
     active_menu_item: MenuItem,
+    pub bfg: Arc<RwLock<BfgServiceImpl<DummyBrokerageApi>>>,
 }
 
 impl App {
     #[allow(clippy::new_without_default)]
-    pub fn new(io_tx: mpsc::SyncSender<IoEvent>) -> Self {
+    pub fn new(io_tx: mpsc::SyncSender<IoEvent>, bfg: Arc<RwLock<BfgServiceImpl<DummyBrokerageApi>>>) -> Self {
         let actions = vec![Action::Quit].into();
         let state = AppState::default();
         let is_loading = false;
@@ -38,6 +41,7 @@ impl App {
             is_loading,
             io_tx,
             active_menu_item,
+            bfg
         }
     }
 

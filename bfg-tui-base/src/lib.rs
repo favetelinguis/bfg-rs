@@ -8,10 +8,13 @@ use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use tui::backend::CrosstermBackend;
 use tui::Terminal;
+use bfg_core::bfg_service_impl::BfgServiceImpl;
+use crate::brokerage_dummy::DummyBrokerageApi;
 
 pub mod app;
 pub mod inputs;
 pub mod io;
+pub mod brokerage_dummy;
 
 #[allow(unreachable_code)]
 pub fn start_ui(app: &Arc<RwLock<App>>) -> Result<()> {

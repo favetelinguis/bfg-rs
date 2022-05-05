@@ -3,7 +3,7 @@ use crate::domain::*;
 
 pub struct BfgServiceImpl<A: BrokerageApi> {
     pub brokerage: A,
-    pub state: State, // Should this be Arc<RwLock<State>>
+    pub state: State,
 }
 
 impl<A> BfgService for BfgServiceImpl<A>
@@ -24,12 +24,12 @@ impl<A> BfgService for BfgServiceImpl<A>
         for action in actions.clone() {
             let (next_state, decision) = do_action(self.state.clone(), action);
             // Execute decisions against brokerage api
-            match decision {
-                Decision::NoOp => (),
-                Decision::Buy(orderDetails) => self.brokerage.place_order(orderDetails),
-                Decision::Sell(orderDetails) => self.brokerage.place_order(orderDetails),
-                Decision::SetupOr => actions.push(Action::OrSetup(self.brokerage.get_or())),
-            }
+            // match decision {
+            //     Decision::NoOp => (),
+            //     Decision::Buy(orderDetails) => self.brokerage.place_order(orderDetails),
+            //     Decision::Sell(orderDetails) => self.brokerage.place_order(orderDetails),
+            //     Decision::SetupOr => actions.push(Action::OrSetup(self.brokerage.get_or())),
+            // }
             self.state = next_state;
         }
     }

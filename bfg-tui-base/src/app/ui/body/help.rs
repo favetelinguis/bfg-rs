@@ -3,7 +3,7 @@ use tui::backend::Backend;
 use tui::layout::{Constraint, Rect};
 use tui::style::{Color, Style};
 use tui::text::Span;
-use tui::widgets::{Block, BorderType, Borders, Row, Table, Cell};
+use tui::widgets::{Block, BorderType, Borders, Cell, Row, Table};
 use tui::Frame;
 
 pub fn draw_help<B>(rect: &mut Frame<B>, chunk: Rect, app: &App)
