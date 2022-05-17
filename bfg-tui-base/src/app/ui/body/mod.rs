@@ -11,7 +11,7 @@ pub mod bfg_status;
 pub mod help;
 pub mod logs;
 
-pub fn draw_body<B>(rect: &mut Frame<B>, chunk: Rect, app: &App)
+pub fn draw_body<'a, B>(rect: &mut Frame<'a, B>, chunk: Rect, app: &App)
 where
     B: Backend,
 {

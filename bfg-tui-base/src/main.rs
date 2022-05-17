@@ -1,55 +1,132 @@
-use bfg_core::bfg_service_impl::BfgServiceImpl;
-use bfg_core::domain::{State, SystemValues};
+use bfg_core::models::{AccountUpdate, MarketUpdate, SystemState, TradeConfirmation, TradeUpdate};
+use bfg_core::{step_system, BfgEvent};
 use bfg_tui_base::app::App;
-use bfg_tui_base::io::handler::IoHandler;
+use bfg_tui_base::io::handler::IoAsyncHandler;
 use bfg_tui_base::io::IoEvent;
 use bfg_tui_base::start_ui;
+use dotenvy::dotenv;
 use eyre::Result;
-use log::{debug, LevelFilter};
-use std::sync::{mpsc, Arc, RwLock};
-use std::thread;
-use bfg_core::ports::{Action, BfgService};
-use bfg_tui_base::brokerage_dummy::DummyBrokerageApi;
+use ig_brokerage_adapter::{ConnectionDetails, IgBrokerageApi, RealtimeEvent};
+use log::LevelFilter;
+use std::sync::Arc;
+use tokio::select;
+use ig_brokerage_adapter::realtime::models::TradeConfirmationUpdate;
 
-
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
+    dotenv().ok();
     // Channel for BFG
-    let (sync_bfg_tx, sync_bfg_rx) = mpsc::sync_channel::<Action>(100);
+    let (sync_bfg_tx, mut sync_bfg_rx) = tokio::sync::mpsc::channel::<RealtimeEvent>(100);
     // Channel for IoEvent
-    let (sync_io_tx, sync_io_rx) = mpsc::sync_channel::<IoEvent>(100);
-
-    let brokerage = DummyBrokerageApi::new(sync_bfg_tx);
-    let service = BfgServiceImpl {
-        brokerage,
-        state: State::new(SystemValues{system: 0, market: 0, trade: 0, account: 0}),
-    };
-    let service = Arc::new(RwLock::new(service));
-    let service_app = Arc::clone(&service);
+    let (sync_io_tx, mut sync_io_rx) = tokio::sync::mpsc::channel::<IoEvent>(100);
 
     // Create app
-    let app = Arc::new(RwLock::new(App::new(sync_io_tx, service_app)));
-    let app_ui = Arc::clone(&app);
+    let gui_state = Arc::new(tokio::sync::RwLock::new(App::new(sync_io_tx)));
+    let app_ui = Arc::clone(&gui_state);
+    let app_bfg = Arc::clone(&gui_state);
 
     // Configure log
-    tui_logger::init_logger(LevelFilter::Debug).unwrap();
-    tui_logger::set_default_level(log::LevelFilter::Debug);
+    tui_logger::init_logger(LevelFilter::Info).unwrap();
+    tui_logger::set_default_level(LevelFilter::Info);
+    tui_logger::set_log_file("event_log.log").unwrap();
 
-    // Handle I/O - Nice to have here if we want right now only used for loading
-    thread::spawn(move || {
-        let mut handler = IoHandler::new(app);
-        while let Ok(io_event) = sync_io_rx.recv() {
-            handler.handle_io_event(io_event);
+    // Handle I/O from GUI
+    let io = tokio::spawn(async move {
+        let mut handler = IoAsyncHandler::new(gui_state);
+        while let Some(io_event) = sync_io_rx.recv().await {
+            handler.handle_io_event(io_event).await;
         }
     });
 
-    // Run BFG
-    thread::spawn(move || {
-        while let Ok(event) = sync_bfg_rx.recv() {
-            service.write().unwrap().publish_update_event(event);
+    // Run Trading system
+    let trade_system = tokio::spawn(async move {
+        let mut handler = IgBrokerageApi::new(ConnectionDetails::from_env(), sync_bfg_tx);
+        handler.connect().await.unwrap();
+        let mut bfg_state = SystemState::Setup;
+        while let Some(action) = sync_bfg_rx.recv().await {
+            match action {
+                RealtimeEvent::RefreshToken => {
+                    handler.update_session().await;
+                }
+                RealtimeEvent::MarketEvent(data) => {
+                    let mut a = app_bfg.write().await;
+                    let next_market = MarketUpdate {
+                        update_time: data.update_time.or_else(|| a.market.update_time.clone()),
+                        market_delay: data.market_delay.or(a.market.market_delay),
+                        market_state: data.market_state.or_else(|| a.market.market_state.clone()),
+                        offer: data.offer.or(a.market.offer),
+                        bid: data.bid.or(a.market.bid),
+                    };
+
+                    let (next_state, decision) =
+                        step_system(bfg_state.clone(), BfgEvent::Market(next_market.clone()));
+                    handler.execute_decision(decision).await.unwrap();
+
+                    bfg_state = next_state;
+
+                    a.market = next_market;
+                    a.system = bfg_state.clone();
+                }
+                RealtimeEvent::AccountEvent(data) => {
+                    let mut a = app_bfg.write().await;
+                    a.account = AccountUpdate {
+                        account: data.account.or_else(|| a.account.account.clone()),
+                        pnl: data.pnl.or(a.account.pnl),
+                        deposit: data.deposit.or(a.account.deposit),
+                        available_cash: data.available_cash.or(a.account.available_cash),
+                        pnl_lr: data.pnl_lr.or(a.account.pnl_lr),
+                        pnl_nlr: data.pnl_nlr.or(a.account.pnl_nlr),
+                        funds: data.funds.or(a.account.funds),
+                        margin: data.margin.or(a.account.margin),
+                        margin_lr: data.margin_lr.or(a.account.margin_lr),
+                        margin_nlr: data.margin_lr.or(a.account.margin_nlr),
+                        available_to_deal: data.available_to_deal.or(a.account.available_to_deal),
+                        equity: data.equity.or(a.account.equity),
+                        equity_used: data.equity_used.or(a.account.equity_used),
+                    };
+                    a.system = bfg_state.clone();
+                }
+                RealtimeEvent::TradeConfirmation(data) => {
+                    let (next_state, decision) = step_system(
+                        bfg_state.clone(),
+                        BfgEvent::TradeConfirmation(TradeConfirmation {
+                            status: data.deal_status.into(),
+                        }),
+                    );
+                    handler.execute_decision(decision).await.unwrap();
+                    bfg_state = next_state;
+                    let mut a = app_bfg.write().await;
+                    a.system = bfg_state.clone();
+                }
+                RealtimeEvent::AccountPositionUpdate(data) => {
+                    let (next_state, decision) = step_system(
+                        bfg_state.clone(),
+                        BfgEvent::Trade(TradeUpdate {
+                            status: data.status.clone().into(),
+                        }),
+                    );
+                    handler.execute_decision(decision).await.unwrap();
+                    bfg_state = next_state;
+                    let mut a = app_bfg.write().await;
+                    a.trade = Some(data); // Also update UI
+                    a.system = bfg_state.clone();
+                }
+                RealtimeEvent::StreamStatus(data) => {
+                    let mut a = app_bfg.write().await;
+                    a.stream_status = data;
+                }
+            }
         }
     });
 
     // Start UI
-    start_ui(&app_ui)?;
+    let ui = start_ui(&app_ui);
+
+    select! {
+        Ok(_) = trade_system => println!("COMPLETED Trade System"),
+        Ok(_) = io => println!("COMPLETED IO"),
+        Ok(_) = ui => println!("COMPLETED UI"),
+    }
+
     Ok(())
 }

@@ -6,7 +6,7 @@ use tui::text::Span;
 use tui::widgets::{Block, BorderType, Borders, Cell, Row, Table};
 use tui::Frame;
 
-pub fn draw_help<B>(rect: &mut Frame<B>, chunk: Rect, app: &App)
+pub fn draw_help<'a, B>(rect: &mut Frame<'a, B>, chunk: Rect, app: &App)
 where
     B: Backend,
 {

@@ -9,7 +9,7 @@ pub enum MenuItem {
     Help,
 }
 
-const MENU_TITLES: [&'static str; 3] = ["Home", "Logs", "?HELP"];
+const MENU_TITLES: [&str; 3] = ["Home", "Logs", "?HELP"];
 
 impl From<MenuItem> for usize {
     fn from(input: MenuItem) -> Self {

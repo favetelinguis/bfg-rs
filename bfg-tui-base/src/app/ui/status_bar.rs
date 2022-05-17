@@ -1,9 +1,10 @@
+use crate::App;
 use tui::layout::Alignment;
 use tui::style::{Color, Style};
 use tui::widgets::{Block, BorderType, Borders, Paragraph};
 
-pub fn draw_title<'a>() -> Paragraph<'a> {
-    Paragraph::new("Plop with TUI")
+pub fn draw_title<'a>(app: &App) -> Paragraph<'a> {
+    Paragraph::new(format!("Stream status: {}", app.stream_status))
         .style(Style::default().fg(Color::LightCyan))
         .alignment(Alignment::Center)
         .block(

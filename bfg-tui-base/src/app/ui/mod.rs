@@ -11,7 +11,7 @@ pub mod body;
 pub mod menu;
 pub mod status_bar;
 
-pub fn draw<B>(rect: &mut Frame<B>, app: &App)
+pub fn draw<'a, B>(rect: &mut Frame<'a, B>, app: &App)
 where
     B: Backend,
 {
@@ -32,14 +32,14 @@ where
         .split(size);
 
     // Title block
-    let title = draw_title();
+    let title = draw_title(app);
     rect.render_widget(title, chunks[0]);
 
     // Body
     draw_body(rect, chunks[1], app);
 
     // Menu block
-    let menu = draw_menu(app.active_menu_item().clone().into());
+    let menu = draw_menu((*app.active_menu_item()).into());
     rect.render_widget(menu, chunks[2]);
 }
 

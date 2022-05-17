@@ -10,7 +10,12 @@ mockall = "0.11.0"
 
 [dependencies]
 bfg-core = { path = "../bfg-core"}
-reqwest = {version="0.11.10", features=["json", "blocking"]}
+reqwest = {version="0.11.10", features=["json"]}
 serde = { version = "1.0.136", features = ["derive"] }
 serde_json = "1.0.79"
-dotenvy = "0.15.1"
+tokio-tungstenite = {version = "0.17.1", features = ["native-tls"]}
+tokio = { version = "1.18.2", features = ["full"] }
+http = "0.2.7"
+url = "2.2.2"
+log = "0.4"
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] } # Needed to split ws stream

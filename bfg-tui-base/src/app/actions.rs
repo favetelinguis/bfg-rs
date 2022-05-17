@@ -13,7 +13,7 @@ pub enum Action {
 }
 
 impl Action {
-    /// All avaliable actions
+    /// All available actions
     pub fn iterator() -> Iter<'static, Action> {
         static ACTIONS: [Action; 5] = [
             Action::Quit,

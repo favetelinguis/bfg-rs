@@ -13,8 +13,5 @@ edition = "2021"
 members = [
     "bfg-core",
     "ig-brokerage-adapter",
-    "bfg-web",
-    "bfg-actrix",
-    "bfg-tui",
-    "bfg-tui-base"
+    "bfg-tui-base",
 ]

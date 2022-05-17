@@ -2,48 +2,48 @@ use crate::io::IoEvent;
 use crate::App;
 use eyre::Result;
 use log::{error, info};
-use std::sync::{Arc, RwLock};
-use std::thread;
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::RwLock;
 
-pub struct IoHandler {
+pub struct IoAsyncHandler {
     app: Arc<RwLock<App>>,
 }
 
-impl IoHandler {
+impl IoAsyncHandler {
     pub fn new(app: Arc<RwLock<App>>) -> Self {
         Self { app }
     }
 
-    pub fn handle_io_event(&mut self, io_event: IoEvent) {
+    pub async fn handle_io_event(&mut self, io_event: IoEvent) {
         let result = match io_event {
-            IoEvent::Initialize => self.do_initialize(),
-            IoEvent::Sleep(duration) => self.do_sleep(duration),
+            IoEvent::Initialize => self.do_initialize().await,
+            IoEvent::Sleep(duration) => self.do_sleep(duration).await,
         };
 
         if let Err(err) = result {
             error!("Oops, something bad happened {:?}", err);
         }
 
-        let mut app = self.app.write().unwrap();
+        let mut app = self.app.write().await;
         app.loaded();
     }
 
-    fn do_initialize(&mut self) -> Result<()> {
+    async fn do_initialize(&mut self) -> Result<()> {
         info!("Initialize the application");
-        let mut app = self.app.write().unwrap();
-        thread::sleep(Duration::from_secs(1));
-        app.initialized(); // we can update the app state
+        let mut app = self.app.write().await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        app.initialized();
         info!("Application initialized");
 
         Ok(())
     }
 
-    fn do_sleep(&mut self, duration: Duration) -> Result<()> {
+    async fn do_sleep(&mut self, duration: Duration) -> Result<()> {
         info!("Go sleeping for {:?}", duration);
-        thread::sleep(duration);
+        tokio::time::sleep(duration).await;
         info!("Wake up!");
-        let mut app = self.app.write().unwrap();
+        let mut app = self.app.write().await;
         app.sleeped();
 
         Ok(())
