@@ -48,7 +48,7 @@ pub async fn close_position(
         let status = res.status().as_u16();
         let message = res.text().await.unwrap(); //.json::<ApiResponse>().unwrap();
         // TODO crash with errorCode: unable to aggregate close positions - no compatible position found
-        error!("Failed to close position with reason: {}", message.clone());
+        error!("Failed to close position status {} and with reason: {}", status, message);
 
         let err = ApiLayerError { status, message };
         return Err(BrokerageError::CoreBrokerageError);
