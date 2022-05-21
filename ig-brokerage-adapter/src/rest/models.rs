@@ -74,7 +74,7 @@ pub struct AccountDetails {
 pub enum AccountType {
     CFD,
     PHYSICAL,
-    SPREADSHEET
+    SPREADSHEET,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -83,13 +83,15 @@ pub struct AccountInfo {
     balance: f64,
     deposit: f64,
     #[serde(rename = "profitLoss")]
-    profit_loss: f64
+    profit_loss: f64,
 }
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub enum ReroutingEnvironment {
-    DEMO, LIVE, TEST, UAT
+    DEMO,
+    LIVE,
+    TEST,
+    UAT,
 }
-
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct CreateSessionRequest {

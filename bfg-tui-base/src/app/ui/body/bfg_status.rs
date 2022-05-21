@@ -49,8 +49,8 @@ pub fn draw_market_info<'a>(state: &MarketUpdate) -> Paragraph<'a> {
         state.offer.map(|n| n.to_string()).unwrap_or_default()
     );
     let market_state = format!(
-        "Market state: {}",
-        state.market_state.clone().unwrap_or_default()
+        "Market state: {:?}",
+        state.market_state
     );
     let market_delay = format!(
         "Market delay: {}",

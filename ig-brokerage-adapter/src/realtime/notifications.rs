@@ -1,13 +1,14 @@
 use crate::realtime::models::{OpenPositionUpdate, TradeConfirmationUpdate, WorkingOrderUpdate};
-use bfg_core::models::{AccountUpdate, MarketUpdate};
+use std::str::FromStr;
+use bfg_core::models::{AccountUpdate, MarketState, MarketUpdate};
 use log::{error, info, warn};
 use std::borrow::BorrowMut;
 
-type MarketState = (
+type MarketState2 = (
     Option<f64>,
     Option<f64>,
     Option<usize>,
-    Option<String>,
+    Option<MarketState>,
     Option<String>,
 );
 
@@ -123,7 +124,7 @@ pub fn parse_account_update(msg: &str) -> AccountUpdate {
 
 pub fn parse_market_update(msg: &str) -> MarketUpdate {
     //"BID" "OFFER" "MARKET_DELAY" "MARKET_STATE" "UPDATE_TIME"
-    let mut prev: MarketState = (None, None, None, None, None);
+    let mut prev: MarketState2 = (None, None, None, None, None);
     let parts: Vec<&str> = msg.trim().split('|').collect();
     let mut indexer: i32 = -1;
     for p in parts {
@@ -147,7 +148,7 @@ pub fn parse_market_update(msg: &str) -> MarketUpdate {
                     0 => prev.0 = Some(p.parse().unwrap()),
                     1 => prev.1 = Some(p.parse().unwrap()),
                     2 => prev.2 = Some(p.parse().unwrap()),
-                    3 => prev.3 = Some(p.to_string()),
+                    3 => prev.3 = Some(FromStr::from_str(p).unwrap()),
                     4 => prev.4 = Some(p.to_string()),
                     _ => unreachable!(),
                 },

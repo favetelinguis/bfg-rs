@@ -1,12 +1,6 @@
 extern crate core;
 
-use crate::models::{
-    BfgTradeStatus, ConfirmsStatus, DataUpdate, DealStatus, Decision, Direction, EntryMode,
-    FetchDataDetails, LimitOrderDetails, MarketOrderDetails, MarketUpdate, OrderState,
-    PriceRelativeOr, SystemState, SystemValues, TradeConfirmation, TradeUpdate,
-    WorkingOrderDetails, WorkingOrderPlacement, WorkingOrderReference, WorkingOrderSystemDetails,
-    WorkingOrderUpdate,
-};
+use crate::models::{BfgTradeStatus, ConfirmsStatus, DataUpdate, DealStatus, Decision, Direction, EntryMode, FetchDataDetails, LimitOrderDetails, MarketOrderDetails, MarketState, MarketUpdate, OrderState, PriceRelativeOr, SystemState, SystemValues, TradeConfirmation, TradeUpdate, WorkingOrderDetails, WorkingOrderPlacement, WorkingOrderReference, WorkingOrderSystemDetails, WorkingOrderUpdate};
 use chrono::{NaiveDateTime, NaiveTime, Utc};
 use log::{error, warn};
 use std::borrow::{Borrow, BorrowMut};
@@ -67,8 +61,8 @@ pub fn step_system(state: SystemState, action: BfgEvent) -> (SystemState, Vec<De
             )
         }
         // Decide where to place working order based on OR and current price
-        (SystemState::SetupWorkingOrder(mut system_values), BfgEvent::Market(d)) => {
-            let curr_price = (d.bid.unwrap() + d.offer.unwrap()) / 2.;
+        (SystemState::SetupWorkingOrder(mut system_values), BfgEvent::Market(MarketUpdate {bid, offer, market_state: Some(MarketState::TRADEABLE), ..})) => {
+            let curr_price = (bid.unwrap() + offer.unwrap()) / 2.;
             let or_high = (system_values.or_high_bid + system_values.or_high_ask) / 2.;
             let or_low = (system_values.or_low_bid + system_values.or_low_ask) / 2.;
             if let Some(working_order_placement) =
@@ -360,12 +354,11 @@ pub fn step_system(state: SystemState, action: BfgEvent) -> (SystemState, Vec<De
                 },
             ),
             BfgEvent::Trade(TradeUpdate {
-                                deal_reference:
-                                WorkingOrderReference::BETWEEN_SHORT,
-                                deal_id,
-                                deal_status: DealStatus::ACCEPTED,
-                                status: BfgTradeStatus::OPEN,
-                            }),
+                deal_reference: WorkingOrderReference::BETWEEN_SHORT,
+                deal_id,
+                deal_status: DealStatus::ACCEPTED,
+                status: BfgTradeStatus::OPEN,
+            }),
         ) => {
             system_values.working_orders.1 = Some(OrderState::PositionOpen(deal_id.clone()));
             (
@@ -383,8 +376,7 @@ pub fn step_system(state: SystemState, action: BfgEvent) -> (SystemState, Vec<De
                 },
             ),
             BfgEvent::Trade(TradeUpdate {
-                deal_reference:
-                    WorkingOrderReference::UNDER_SHORT,
+                deal_reference: WorkingOrderReference::UNDER_SHORT,
                 deal_id,
                 deal_status: DealStatus::ACCEPTED,
                 status: BfgTradeStatus::OPEN,
@@ -406,12 +398,11 @@ pub fn step_system(state: SystemState, action: BfgEvent) -> (SystemState, Vec<De
                 },
             ),
             BfgEvent::Trade(TradeUpdate {
-                                deal_reference:
-                                WorkingOrderReference::BETWEEN_LONG,
-                                deal_id,
-                                deal_status: DealStatus::ACCEPTED,
-                                status: BfgTradeStatus::OPEN,
-                            }),
+                deal_reference: WorkingOrderReference::BETWEEN_LONG,
+                deal_id,
+                deal_status: DealStatus::ACCEPTED,
+                status: BfgTradeStatus::OPEN,
+            }),
         ) => {
             system_values.working_orders.0 = Some(OrderState::PositionOpen(deal_id.clone()));
             (
@@ -429,8 +420,7 @@ pub fn step_system(state: SystemState, action: BfgEvent) -> (SystemState, Vec<De
                 },
             ),
             BfgEvent::Trade(TradeUpdate {
-                deal_reference:
-                    WorkingOrderReference::OVER_LONG,
+                deal_reference: WorkingOrderReference::OVER_LONG,
                 deal_id,
                 deal_status: DealStatus::ACCEPTED,
                 status: BfgTradeStatus::OPEN,
@@ -487,7 +477,10 @@ pub fn step_system(state: SystemState, action: BfgEvent) -> (SystemState, Vec<De
             )
         }
         (s, a) => {
-            warn!("Not implemented in trading system state {:?} action {:?}", s, a);
+            warn!(
+                "Not implemented in trading system state {:?} action {:?}",
+                s, a
+            );
             (s, vec![Decision::NoOp])
         }
     }

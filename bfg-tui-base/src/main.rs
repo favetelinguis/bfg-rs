@@ -1,5 +1,4 @@
 use bfg_core::models::{AccountUpdate, MarketUpdate, SystemState, TradeConfirmation, TradeUpdate};
-use std::str::FromStr;
 use bfg_core::{step_system, BfgEvent};
 use bfg_tui_base::app::App;
 use bfg_tui_base::io::handler::IoAsyncHandler;
@@ -10,6 +9,7 @@ use eyre::Result;
 use ig_brokerage_adapter::realtime::models::{PositionStatus, TradeConfirmationUpdate};
 use ig_brokerage_adapter::{ConnectionDetails, IgBrokerageApi, RealtimeEvent};
 use log::{error, info, warn, LevelFilter};
+use std::str::FromStr;
 use std::sync::Arc;
 use tokio::select;
 
@@ -41,8 +41,7 @@ async fn main() -> Result<()> {
 
     // Run Trading system
     let trade_system = tokio::spawn(async move {
-        let mut handler = IgBrokerageApi::new(ConnectionDetails::from_env(), sync_bfg_tx);
-        handler.connect().await.unwrap();
+        let handler = IgBrokerageApi::new(ConnectionDetails::from_env(), sync_bfg_tx).await;
         let mut bfg_state = SystemState::Setup;
         while let Some(action) = sync_bfg_rx.recv().await {
             match action {
@@ -66,7 +65,8 @@ async fn main() -> Result<()> {
 
                     // // A system step could result in more events
                     while let Some(event) = events.iter().next().unwrap() {
-                        let (next_state, more_decisions) = step_system(bfg_state.clone(), event.clone());
+                        let (next_state, more_decisions) =
+                            step_system(bfg_state.clone(), event.clone());
                         bfg_state = next_state;
 
                         for d in more_decisions {
@@ -103,7 +103,8 @@ async fn main() -> Result<()> {
                             deal_status: data.deal_status.into(),
                             status: data.status.map(|i: PositionStatus| i.into()),
                             deal_id: data.deal_id,
-                            deal_reference: FromStr::from_str(data.deal_reference.as_str()).expect("We should only use deal references that are expected"),
+                            deal_reference: FromStr::from_str(data.deal_reference.as_str())
+                                .expect("We should only use deal references that are expected"),
                             reason: data.reason,
                         }),
                     );
@@ -115,7 +116,8 @@ async fn main() -> Result<()> {
                     }
                     // // A system step could result in more events
                     while let Some(event) = events.iter().next().unwrap() {
-                        let (next_state, more_decisions) = step_system(bfg_state.clone(), event.clone());
+                        let (next_state, more_decisions) =
+                            step_system(bfg_state.clone(), event.clone());
                         bfg_state = next_state;
 
                         for d in more_decisions {
@@ -133,7 +135,8 @@ async fn main() -> Result<()> {
                             deal_status: data.deal_status.clone().into(),
                             status: data.status.clone().into(),
                             deal_id: data.deal_id.clone(),
-                            deal_reference: FromStr::from_str(data.deal_reference.as_str()).expect("We should only use deal references that are expected"),
+                            deal_reference: FromStr::from_str(data.deal_reference.as_str())
+                                .expect("We should only use deal references that are expected"),
                         }),
                     );
                     bfg_state = next_state;
@@ -144,7 +147,8 @@ async fn main() -> Result<()> {
                     }
                     // // A system step could result in more events
                     while let Some(event) = events.iter().next().unwrap() {
-                        let (next_state, more_decisions) = step_system(bfg_state.clone(), event.clone());
+                        let (next_state, more_decisions) =
+                            step_system(bfg_state.clone(), event.clone());
                         bfg_state = next_state;
 
                         for d in more_decisions {
@@ -173,7 +177,7 @@ async fn main() -> Result<()> {
     select! {
         Ok(_) = trade_system => println!("COMPLETED Trade System"),
         Ok(_) = io => println!("COMPLETED IO"),
-        Ok(_) = ui => println!("COMPLETED UI"),
+        // Ok(_) = ui => println!("COMPLETED UI"),
     }
 
     Ok(())

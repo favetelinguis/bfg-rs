@@ -79,8 +79,13 @@ pub struct MarketUpdate {
     pub bid: Option<f64>,
     pub offer: Option<f64>,
     pub market_delay: Option<usize>,
-    pub market_state: Option<String>,
+    pub market_state: Option<MarketState>,
     pub update_time: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub enum MarketState {
+    CLOSED, OFFLINE, TRADEABLE, EDIT, AUCTION, AUCTION_NO_EDIT, SUSPENDED
 }
 
 #[derive(Debug, Clone)]
@@ -135,6 +140,23 @@ pub struct WorkingOrderUpdate {
     pub deal_reference: String,
     pub deal_status: DealStatus,
     pub level: f64,
+}
+
+impl FromStr for MarketState {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "TRADEABLE" => Ok(MarketState::TRADEABLE),
+            "AUCTION" => Ok(MarketState::AUCTION),
+            "CLOSED" => Ok(MarketState::CLOSED),
+            "AUCTION_NO_EDIT" => Ok(MarketState::AUCTION_NO_EDIT),
+            "SUSPENDED" => Ok(MarketState::SUSPENDED),
+            "EDIT" => Ok(MarketState::EDIT),
+            "OFFLINE" => Ok(MarketState::OFFLINE),
+            _ => Err(()),
+        }
+    }
 }
 
 impl FromStr for WorkingOrderReference {
@@ -231,7 +253,7 @@ pub enum Decision {
     NoOp,
     CreateWorkingOrder(WorkingOrderDetails),
     FetchData(FetchDataDetails),
-    CancelWorkingOrder(String),     // deal_id
+    CancelWorkingOrder(String),          // deal_id
     UpdateWithTrailingStop(String, f64), // deal_id, stop_level
 }
 

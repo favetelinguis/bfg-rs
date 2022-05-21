@@ -1,7 +1,5 @@
 use crate::BrokerageError;
-use bfg_core::models::{
-    BfgTradeStatus, MarketUpdate, TradeConfirmation,
-};
+use bfg_core::models::{BfgTradeStatus, MarketUpdate, TradeConfirmation};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
@@ -157,7 +155,7 @@ impl From<OpuStatus> for BfgTradeStatus {
     }
 }
 
-impl From<DealStatus> for bfg_core::models::DealStatus{
+impl From<DealStatus> for bfg_core::models::DealStatus {
     fn from(input: DealStatus) -> Self {
         match input {
             DealStatus::ACCEPTED => bfg_core::models::DealStatus::ACCEPTED,
