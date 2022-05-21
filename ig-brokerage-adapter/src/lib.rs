@@ -9,7 +9,6 @@ use bfg_core::BfgEvent;
 use reqwest::Client;
 use std::borrow::Borrow;
 use std::env;
-use std::time::Duration;
 use tokio::sync::mpsc::Sender;
 
 pub mod errors;
@@ -24,13 +23,12 @@ pub enum RealtimeEvent {
     AccountPositionUpdate(OpenPositionUpdate),
     WorkingOrderUpdate(WorkingOrderUpdate),
     StreamStatus(String),
-    RefreshToken,
 }
 
 #[derive(Debug)]
 pub enum SessionState {
     NoSession,
-    HasSession(AccessTokenResponse),
+    HasSession(String, String), // xst, cst
 }
 
 #[derive(Clone)]
@@ -76,73 +74,38 @@ impl IgBrokerageApi {
     pub async fn connect(&mut self) -> Result<(), BrokerageError> {
         if let SessionState::NoSession = self.session {
             // POST /session
-            let session =
+            let (xst, cst, session) =
                 rest::create_session(self.http_client.clone(), self.connection_details.borrow())
                     .await?;
 
-            // Start a token refresh task
-            let refresh_tx = self.tx_out.clone();
-            tokio::spawn(async move {
-                let mut interval = tokio::time::interval(Duration::from_secs(40));
-                loop {
-                    interval.tick().await;
-                    refresh_tx.send(RealtimeEvent::RefreshToken).await.unwrap();
-                }
-            });
-            // GET /session
-            let (xst, cst) = rest::get_session(
-                self.http_client.clone(),
-                self.connection_details.borrow(),
-                session.oauth_token.access_token.borrow(),
-            )
-            .await?;
-
             // Setup details needed for stream
             let rest_details = RestDetails {
-                xst,
-                cst,
+                xst: xst.clone(),
+                cst: cst.clone(),
                 url: session.lightstreamer_endpoint,
                 account: self.connection_details.account.clone(),
             };
 
             IgStreamClient::start(rest_details, self.tx_out.clone()).await?;
 
-            self.session = SessionState::HasSession(session.oauth_token);
+            self.session = SessionState::HasSession(xst, cst);
         }
 
         Ok(())
-    }
-
-    pub async fn update_session(&mut self) {
-        if let SessionState::HasSession(AccessTokenResponse {
-            ref refresh_token, ..
-        }) = self.session
-        {
-            let update = rest::refresh_token(
-                self.http_client.clone(),
-                self.connection_details.borrow(),
-                refresh_token,
-            )
-            .await
-            .unwrap();
-            self.session = SessionState::HasSession(update);
-        }
     }
 
     pub async fn execute_decision(
         &self,
         decision: Decision,
     ) -> Result<Option<BfgEvent>, BrokerageError> {
-        if let SessionState::HasSession(AccessTokenResponse {
-            ref access_token, ..
-        }) = self.session
+        if let SessionState::HasSession(ref xst, ref cst) = self.session
         {
             match decision {
                 Decision::FetchData(FetchDataDetails { start, end }) => {
                     let res = rest::fetch_data(
                         self.http_client.clone(),
                         self.connection_details.borrow(),
-                        access_token,
+                        xst, cst,
                         start.as_str(),
                         end.as_str(),
                     )
@@ -156,7 +119,7 @@ impl IgBrokerageApi {
                     rest::open_working_order(
                         self.http_client.clone(),
                         self.connection_details.borrow(),
-                        access_token,
+                        xst, cst,
                         direction,
                         price,
                         format!("{:?}", reference).as_str(),
@@ -167,7 +130,7 @@ impl IgBrokerageApi {
                     rest::delete_working_order(
                         self.http_client.clone(),
                         self.connection_details.borrow(),
-                        access_token,
+                        xst, cst,
                         deal_id.as_str(),
                     )
                         .await;
@@ -176,7 +139,7 @@ impl IgBrokerageApi {
                     rest::edit_position(
                         self.http_client.clone(),
                         self.connection_details.borrow(),
-                        access_token,
+                        xst, cst,
                         deal_id.as_str(),
                         stop_level
                     )

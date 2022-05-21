@@ -1,9 +1,5 @@
 use crate::errors::ApiLayerError;
-use crate::rest::models::{
-    AccessTokenResponse, ClosePositionRequest, CreateDeletePositionResponse, CreateSessionRequest,
-    CreateSessionResponse, CreateWorkingOrderRequest, EditPositionRequest, FetchDataResponse,
-    OpenPositionRequest, RefreshTokenRequest,
-};
+use crate::rest::models::{AccessTokenResponse, ClosePositionRequest, CreateDeletePositionResponse, CreateSessionRequest, CreateSessionRequestV2, CreateSessionResponse, CreateSessionResponseV2, CreateWorkingOrderRequest, EditPositionRequest, FetchDataResponse, OpenPositionRequest, RefreshTokenRequest};
 use crate::{BrokerageError, ConnectionDetails};
 use bfg_core::models::Direction;
 use futures_util::future::err;
@@ -18,7 +14,8 @@ pub mod models;
 pub async fn close_position(
     client: Client,
     connection_details: &ConnectionDetails,
-    access_token: &str,
+    xst: &str,
+    cst: &str,
     direction: Direction,
     deal_reference: String,
 ) -> Result<(), BrokerageError> {
@@ -29,7 +26,8 @@ pub async fn close_position(
         "application/json; charset=UTF-8".parse().unwrap(),
     );
     headers.insert("X-IG-API-KEY", connection_details.api_key.parse().unwrap());
-    headers.insert("IG-ACCOUNT-ID", connection_details.account.parse().unwrap());
+    headers.insert("X-SECURITY-TOKEN", xst.parse().unwrap());
+    headers.insert("CST", cst.parse().unwrap());
     headers.insert("Version", "1".parse().unwrap());
     headers.insert("_method", "DELETE".parse().unwrap());
     let body =
@@ -39,7 +37,6 @@ pub async fn close_position(
             "{}{}",
             connection_details.base_url, "positions/otc"
         ))
-        .bearer_auth(access_token)
         .headers(headers)
         .body(body)
         .send()
@@ -69,7 +66,8 @@ pub async fn close_position(
 pub async fn fetch_data(
     client: Client,
     connection_details: &ConnectionDetails,
-    access_token: &str,
+    xst: &str,
+    cst: &str,
     start: &str,
     end: &str,
 ) -> Result<FetchDataResponse, BrokerageError> {
@@ -80,13 +78,13 @@ pub async fn fetch_data(
         "application/json; charset=UTF-8".parse().unwrap(),
     );
     headers.insert("X-IG-API-KEY", connection_details.api_key.parse().unwrap());
-    headers.insert("IG-ACCOUNT-ID", connection_details.account.parse().unwrap());
+    headers.insert("X-SECURITY-TOKEN", xst.parse().unwrap());
+    headers.insert("CST", cst.parse().unwrap());
     headers.insert("Version", "2".parse().unwrap());
     let resource = format!("prices/IX.D.DAX.IFMM.IP/MINUTE/{start}/{end}");
     let url = format!("{}{}", connection_details.base_url, resource);
     let res = client
         .get(url)
-        .bearer_auth(access_token)
         .headers(headers)
         .send()
         .await
@@ -111,7 +109,8 @@ pub async fn fetch_data(
 pub async fn open_position(
     client: Client,
     connection_details: &ConnectionDetails,
-    access_token: &str,
+    xst: &str,
+    cst: &str,
     direction: Direction,
     level: f64,
     deal_reference: String,
@@ -123,14 +122,14 @@ pub async fn open_position(
         "application/json; charset=UTF-8".parse().unwrap(),
     );
     headers.insert("X-IG-API-KEY", connection_details.api_key.parse().unwrap());
-    headers.insert("IG-ACCOUNT-ID", connection_details.account.parse().unwrap());
+    headers.insert("X-SECURITY-TOKEN", xst.parse().unwrap());
+    headers.insert("CST", cst.parse().unwrap());
     headers.insert("Version", "2".parse().unwrap());
     let res = client
         .post(format!(
             "{}{}",
             connection_details.base_url, "positions/otc"
         ))
-        .bearer_auth(access_token)
         .headers(headers)
         .json::<OpenPositionRequest>(
             OpenPositionRequest::new(direction.into(), level, deal_reference).borrow(),
@@ -158,7 +157,7 @@ pub async fn open_position(
 pub async fn create_session(
     client: Client,
     connection_details: &ConnectionDetails,
-) -> Result<CreateSessionResponse, BrokerageError> {
+) -> Result<(String, String, CreateSessionResponseV2), BrokerageError> {
     let mut headers = HeaderMap::new();
     headers.insert(ACCEPT, "application/json; charset=UTF-8".parse().unwrap());
     headers.insert(
@@ -166,12 +165,12 @@ pub async fn create_session(
         "application/json; charset=UTF-8".parse().unwrap(),
     );
     headers.insert("X-IG-API-KEY", connection_details.api_key.parse().unwrap());
-    headers.insert("IG-ACCOUNT-ID", connection_details.account.parse().unwrap());
-    headers.insert("Version", "3".parse().unwrap());
+    headers.insert("Version", "2".parse().unwrap());
     let res = client
         .post(format!("{}{}", connection_details.base_url, "session"))
         .headers(headers)
-        .json::<CreateSessionRequest>(&CreateSessionRequest {
+        .json(&CreateSessionRequestV2 {
+            encrypted_password: false,
             identifier: connection_details.username.clone(),
             password: connection_details.password.clone(),
         })
@@ -187,18 +186,29 @@ pub async fn create_session(
         return Err(BrokerageError::CoreBrokerageError);
     }
 
+    // xst och cst is good for 12h and will reset on each api call for another 12h
+    let xst = res
+        .headers()
+        .get("x-security-token")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .into();
+    let cst = res.headers().get("cst").unwrap().to_str().unwrap().into();
+
     let res = res
-        .json::<CreateSessionResponse>()
+        .json::<CreateSessionResponseV2>()
         .await
         .map_err(|e| BrokerageError::CoreBrokerageError)?;
 
-    Ok(res)
+    Ok((xst, cst, res))
 }
 
 pub async fn get_session(
     client: Client,
     connection_details: &ConnectionDetails,
-    access_token: &str,
+    xst: &str,
+    cst: &str,
 ) -> Result<(String, String), BrokerageError> {
     let mut headers = HeaderMap::new();
     headers.insert(ACCEPT, "application/json; charset=UTF-8".parse().unwrap());
@@ -207,13 +217,14 @@ pub async fn get_session(
         "application/json; charset=UTF-8".parse().unwrap(),
     );
     headers.insert("X-IG-API-KEY", connection_details.api_key.parse().unwrap());
+    headers.insert("X-SECURITY-TOKEN", xst.parse().unwrap());
+    headers.insert("CST", cst.parse().unwrap());
     headers.insert("Version", "1".parse().unwrap());
     let res = client
         .get(format!(
             "{}{}?fetchSessionTokens=true",
             connection_details.base_url, "session"
         ))
-        .bearer_auth(access_token)
         .headers(headers)
         .send()
         .await
@@ -238,56 +249,11 @@ pub async fn get_session(
     Ok((xst, cst))
 }
 
-pub async fn refresh_token(
-    client: Client,
-    connection_details: &ConnectionDetails,
-    refresh_token: &str,
-) -> Result<AccessTokenResponse, BrokerageError> {
-    let mut headers = HeaderMap::new();
-    headers.insert(ACCEPT, "application/json; charset=UTF-8".parse().unwrap());
-    headers.insert(
-        CONTENT_TYPE,
-        "application/json; charset=UTF-8".parse().unwrap(),
-    );
-    headers.insert("X-IG-API-KEY", connection_details.api_key.parse().unwrap());
-    headers.insert("IG-ACCOUNT-ID", connection_details.account.parse().unwrap());
-    headers.insert("Version", "1".parse().unwrap());
-    let res = client
-        .post(format!(
-            "{}{}",
-            connection_details.base_url, "session/refresh-token"
-        ))
-        .headers(headers)
-        .json::<RefreshTokenRequest>(
-            RefreshTokenRequest {
-                refresh_token: refresh_token.to_string(),
-            }
-            .borrow(),
-        )
-        .send()
-        .await
-        .map_err(|e| BrokerageError::CoreBrokerageError)?;
-    if !res.status().is_success() {
-        let status = res.status().as_u16();
-        let message = res.text().await.unwrap();
-        error!("Failed to refresh token: {}", message);
-
-        let err = ApiLayerError { status, message };
-        return Err(BrokerageError::CoreBrokerageError);
-    }
-
-    let res = res
-        .json::<AccessTokenResponse>()
-        .await
-        .map_err(|e| BrokerageError::CoreBrokerageError)?;
-
-    Ok(res)
-}
-
 pub async fn open_working_order(
     client: Client,
     connection_details: &ConnectionDetails,
-    access_token: &str,
+    xst: &str,
+    cst: &str,
     direction: Direction,
     level: f64,
     deal_reference: &str,
@@ -299,14 +265,14 @@ pub async fn open_working_order(
         "application/json; charset=UTF-8".parse().unwrap(),
     );
     headers.insert("X-IG-API-KEY", connection_details.api_key.parse().unwrap());
-    headers.insert("IG-ACCOUNT-ID", connection_details.account.parse().unwrap());
+    headers.insert("X-SECURITY-TOKEN", xst.parse().unwrap());
+    headers.insert("CST", cst.parse().unwrap());
     headers.insert("Version", "2".parse().unwrap());
     let res = client
         .post(format!(
             "{}{}",
             connection_details.base_url, "workingorders/otc"
         ))
-        .bearer_auth(access_token)
         .headers(headers)
         .json(CreateWorkingOrderRequest::new(direction.into(), level, deal_reference).borrow())
         .send()
@@ -332,7 +298,8 @@ pub async fn open_working_order(
 pub async fn delete_working_order(
     client: Client,
     connection_details: &ConnectionDetails,
-    access_token: &str,
+    xst: &str,
+    cst: &str,
     deal_id: &str,
 ) -> Result<(), BrokerageError> {
     let mut headers = HeaderMap::new();
@@ -342,7 +309,8 @@ pub async fn delete_working_order(
         "application/json; charset=UTF-8".parse().unwrap(),
     );
     headers.insert("X-IG-API-KEY", connection_details.api_key.parse().unwrap());
-    headers.insert("IG-ACCOUNT-ID", connection_details.account.parse().unwrap());
+    headers.insert("X-SECURITY-TOKEN", xst.parse().unwrap());
+    headers.insert("CST", cst.parse().unwrap());
     headers.insert("Version", "1".parse().unwrap());
     headers.insert("_method", "DELETE".parse().unwrap());
     let res = client
@@ -350,7 +318,6 @@ pub async fn delete_working_order(
             "{}{}/{}",
             connection_details.base_url, "workingorders/otc", deal_id
         ))
-        .bearer_auth(access_token)
         .headers(headers)
         .send()
         .await
@@ -377,7 +344,8 @@ pub async fn delete_working_order(
 pub async fn edit_position(
     client: Client,
     connection_details: &ConnectionDetails,
-    access_token: &str,
+    xst: &str,
+    cst: &str,
     deal_id: &str,
     stop_level: f64,
 ) -> Result<(), BrokerageError> {
@@ -388,14 +356,14 @@ pub async fn edit_position(
         "application/json; charset=UTF-8".parse().unwrap(),
     );
     headers.insert("X-IG-API-KEY", connection_details.api_key.parse().unwrap());
-    headers.insert("IG-ACCOUNT-ID", connection_details.account.parse().unwrap());
+    headers.insert("X-SECURITY-TOKEN", xst.parse().unwrap());
+    headers.insert("CST", cst.parse().unwrap());
     headers.insert("Version", "2".parse().unwrap());
     let res = client
         .put(format!(
             "{}{}/{}",
             connection_details.base_url, "positions/otc", deal_id
         ))
-        .bearer_auth(access_token)
         .headers(headers)
         .json(EditPositionRequest::new(stop_level).borrow())
         .send()

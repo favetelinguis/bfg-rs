@@ -29,9 +29,80 @@ pub struct CreateSessionResponse {
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct CreateSessionResponseV2 {
+    #[serde(rename = "accountInfo")]
+    pub account_info: AccountInfo,
+    #[serde(rename = "accountType")]
+    pub account_type: AccountType,
+    pub accounts: Vec<AccountDetails>,
+    #[serde(rename = "clientId")]
+    pub client_id: String,
+    #[serde(rename = "currencyIsoCode")]
+    pub currency_iso_code: String,
+    #[serde(rename = "currencySymbol")]
+    pub currency_symbol: String,
+    #[serde(rename = "currentAccountId")]
+    pub current_account_id: String,
+    #[serde(rename = "dealingEnabled")]
+    pub dealing_enabled: bool,
+    #[serde(rename = "hasActiveDemoAccounts")]
+    pub has_active_demo_accounts: bool,
+    #[serde(rename = "hasActiveLiveAccounts")]
+    pub has_active_live_accounts: bool,
+    #[serde(rename = "lightstreamerEndpoint")]
+    pub lightstreamer_endpoint: String,
+    #[serde(rename = "reroutingEnvironment")]
+    pub rerouting_environment: Option<ReroutingEnvironment>,
+    #[serde(rename = "timezoneOffset")]
+    pub timezone_offset: usize,
+    #[serde(rename = "trailingStopsEnabled")]
+    pub trailing_stops_enabled: bool,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct AccountDetails {
+    #[serde(rename = "accountId")]
+    account_id: String,
+    #[serde(rename = "accountName")]
+    account_name: String,
+    #[serde(rename = "accountType")]
+    account_type: AccountType,
+    preferred: bool,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub enum AccountType {
+    CFD,
+    PHYSICAL,
+    SPREADSHEET
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct AccountInfo {
+    available: f64,
+    balance: f64,
+    deposit: f64,
+    #[serde(rename = "profitLoss")]
+    profit_loss: f64
+}
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub enum ReroutingEnvironment {
+    DEMO, LIVE, TEST, UAT
+}
+
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct CreateSessionRequest {
     pub identifier: String,
     pub password: String,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct CreateSessionRequestV2 {
+    pub identifier: String,
+    pub password: String,
+    #[serde(rename = "encryptedPassword")]
+    pub encrypted_password: bool,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]

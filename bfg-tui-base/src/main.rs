@@ -46,9 +46,6 @@ async fn main() -> Result<()> {
         let mut bfg_state = SystemState::Setup;
         while let Some(action) = sync_bfg_rx.recv().await {
             match action {
-                RealtimeEvent::RefreshToken => {
-                    handler.update_session().await;
-                }
                 RealtimeEvent::MarketEvent(data) => {
                     let mut a = app_bfg.write().await;
                     let next_market = MarketUpdate {
