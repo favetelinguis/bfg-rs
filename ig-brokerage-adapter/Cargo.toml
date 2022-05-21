@@ -19,3 +19,4 @@ http = "0.2.7"
 url = "2.2.2"
 log = "0.4"
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] } # Needed to split ws stream
+chrono = "0.4"

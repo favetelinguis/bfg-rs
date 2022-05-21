@@ -1,15 +1,17 @@
 use crate::errors::ApiLayerError;
 use crate::rest::models::{
     AccessTokenResponse, ClosePositionRequest, CreateDeletePositionResponse, CreateSessionRequest,
-    CreateSessionResponse, OpenPositionRequest, RefreshTokenRequest,
+    CreateSessionResponse, CreateWorkingOrderRequest, EditPositionRequest, FetchDataResponse,
+    OpenPositionRequest, RefreshTokenRequest,
 };
 use crate::{BrokerageError, ConnectionDetails};
 use bfg_core::models::Direction;
-use log::{error, info};
+use futures_util::future::err;
+use futures_util::TryFutureExt;
+use log::{error, info, warn};
 use reqwest::header::{HeaderMap, ACCEPT, CONTENT_TYPE};
 use reqwest::Client;
 use std::borrow::Borrow;
-use futures_util::future::err;
 
 pub mod models;
 
@@ -18,7 +20,6 @@ pub async fn close_position(
     connection_details: &ConnectionDetails,
     access_token: &str,
     direction: Direction,
-    level: f64,
     deal_reference: String,
 ) -> Result<(), BrokerageError> {
     let mut headers = HeaderMap::new();
@@ -47,11 +48,15 @@ pub async fn close_position(
     if !res.status().is_success() {
         let status = res.status().as_u16();
         let message = res.text().await.unwrap(); //.json::<ApiResponse>().unwrap();
-        // TODO crash with errorCode: unable to aggregate close positions - no compatible position found
-        error!("Failed to close position status {} and with reason: {}", status, message);
+                                                 // TODO crash with errorCode: unable to aggregate close positions - no compatible position found
+        error!(
+            "Failed to close position status {} and with reason: {}",
+            status, message
+        );
 
         let err = ApiLayerError { status, message };
-        return Err(BrokerageError::CoreBrokerageError);
+        // return Err(BrokerageError::CoreBrokerageError);
+        return Ok(()); // If i try to close a position that already is closed things crash so i always say ok even if not
     }
 
     let res = res
@@ -59,6 +64,48 @@ pub async fn close_position(
         .await
         .map_err(|e| BrokerageError::CoreBrokerageError)?;
     Ok(())
+}
+
+pub async fn fetch_data(
+    client: Client,
+    connection_details: &ConnectionDetails,
+    access_token: &str,
+    start: &str,
+    end: &str,
+) -> Result<FetchDataResponse, BrokerageError> {
+    let mut headers = HeaderMap::new();
+    headers.insert(ACCEPT, "application/json; charset=UTF-8".parse().unwrap());
+    headers.insert(
+        CONTENT_TYPE,
+        "application/json; charset=UTF-8".parse().unwrap(),
+    );
+    headers.insert("X-IG-API-KEY", connection_details.api_key.parse().unwrap());
+    headers.insert("IG-ACCOUNT-ID", connection_details.account.parse().unwrap());
+    headers.insert("Version", "2".parse().unwrap());
+    let resource = format!("prices/IX.D.DAX.IFMM.IP/MINUTE/{start}/{end}");
+    let url = format!("{}{}", connection_details.base_url, resource);
+    let res = client
+        .get(url)
+        .bearer_auth(access_token)
+        .headers(headers)
+        .send()
+        .await
+        .map_err(|e| BrokerageError::CoreBrokerageError)?;
+    if !res.status().is_success() {
+        let status = res.status().as_u16();
+        let message = res.text().await.unwrap();
+        error!("Failed to get data with reason: {}", message);
+
+        let err = ApiLayerError { status, message };
+        return Err(BrokerageError::CoreBrokerageError);
+    }
+
+    let res = res
+        .json::<FetchDataResponse>()
+        .await
+        .map_err(|e| BrokerageError::CoreBrokerageError)?;
+
+    Ok(res)
 }
 
 pub async fn open_position(
@@ -222,8 +269,8 @@ pub async fn refresh_token(
         .map_err(|e| BrokerageError::CoreBrokerageError)?;
     if !res.status().is_success() {
         let status = res.status().as_u16();
-        let message = res.text().await.unwrap(); //.json::<ApiResponse>().unwrap();
-        error!("Failed to open position with reason: {}", message.clone());
+        let message = res.text().await.unwrap();
+        error!("Failed to refresh token: {}", message);
 
         let err = ApiLayerError { status, message };
         return Err(BrokerageError::CoreBrokerageError);
@@ -235,4 +282,138 @@ pub async fn refresh_token(
         .map_err(|e| BrokerageError::CoreBrokerageError)?;
 
     Ok(res)
+}
+
+pub async fn open_working_order(
+    client: Client,
+    connection_details: &ConnectionDetails,
+    access_token: &str,
+    direction: Direction,
+    level: f64,
+    deal_reference: &str,
+) -> Result<(), BrokerageError> {
+    let mut headers = HeaderMap::new();
+    headers.insert(ACCEPT, "application/json; charset=UTF-8".parse().unwrap());
+    headers.insert(
+        CONTENT_TYPE,
+        "application/json; charset=UTF-8".parse().unwrap(),
+    );
+    headers.insert("X-IG-API-KEY", connection_details.api_key.parse().unwrap());
+    headers.insert("IG-ACCOUNT-ID", connection_details.account.parse().unwrap());
+    headers.insert("Version", "2".parse().unwrap());
+    let res = client
+        .post(format!(
+            "{}{}",
+            connection_details.base_url, "workingorders/otc"
+        ))
+        .bearer_auth(access_token)
+        .headers(headers)
+        .json(CreateWorkingOrderRequest::new(direction.into(), level, deal_reference).borrow())
+        .send()
+        .await
+        .map_err(|e| BrokerageError::CoreBrokerageError)?;
+    if !res.status().is_success() {
+        let status = res.status().as_u16();
+        let message = res.text().await.unwrap(); //.json::<ApiResponse>().unwrap();
+        error!("Failed to open position with reason: {}", message.clone());
+
+        let err = ApiLayerError { status, message };
+        return Err(BrokerageError::CoreBrokerageError);
+    }
+
+    let res = res
+        .json::<CreateDeletePositionResponse>()
+        .await
+        .map_err(|e| BrokerageError::CoreBrokerageError)?;
+
+    Ok(())
+}
+
+pub async fn delete_working_order(
+    client: Client,
+    connection_details: &ConnectionDetails,
+    access_token: &str,
+    deal_id: &str,
+) -> Result<(), BrokerageError> {
+    let mut headers = HeaderMap::new();
+    headers.insert(ACCEPT, "application/json; charset=UTF-8".parse().unwrap());
+    headers.insert(
+        CONTENT_TYPE,
+        "application/json; charset=UTF-8".parse().unwrap(),
+    );
+    headers.insert("X-IG-API-KEY", connection_details.api_key.parse().unwrap());
+    headers.insert("IG-ACCOUNT-ID", connection_details.account.parse().unwrap());
+    headers.insert("Version", "1".parse().unwrap());
+    headers.insert("_method", "DELETE".parse().unwrap());
+    let res = client
+        .post(format!(
+            "{}{}/{}",
+            connection_details.base_url, "workingorders/otc", deal_id
+        ))
+        .bearer_auth(access_token)
+        .headers(headers)
+        .send()
+        .await
+        .map_err(|e| BrokerageError::CoreBrokerageError)?;
+    if !res.status().is_success() {
+        let status = res.status().as_u16();
+        let message = res.text().await.unwrap();
+        error!(
+            "Failed to close workingorder status {} and with reason: {}",
+            status, message
+        );
+
+        let err = ApiLayerError { status, message };
+        return Ok(()); // If i try to close a position that already is closed things crash so i always say ok even if not
+    }
+
+    let res = res
+        .json::<CreateDeletePositionResponse>()
+        .await
+        .map_err(|e| BrokerageError::CoreBrokerageError)?;
+    Ok(())
+}
+
+pub async fn edit_position(
+    client: Client,
+    connection_details: &ConnectionDetails,
+    access_token: &str,
+    deal_id: &str,
+    stop_level: f64,
+) -> Result<(), BrokerageError> {
+    let mut headers = HeaderMap::new();
+    headers.insert(ACCEPT, "application/json; charset=UTF-8".parse().unwrap());
+    headers.insert(
+        CONTENT_TYPE,
+        "application/json; charset=UTF-8".parse().unwrap(),
+    );
+    headers.insert("X-IG-API-KEY", connection_details.api_key.parse().unwrap());
+    headers.insert("IG-ACCOUNT-ID", connection_details.account.parse().unwrap());
+    headers.insert("Version", "2".parse().unwrap());
+    let res = client
+        .put(format!(
+            "{}{}/{}",
+            connection_details.base_url, "positions/otc", deal_id
+        ))
+        .bearer_auth(access_token)
+        .headers(headers)
+        .json(EditPositionRequest::new(stop_level).borrow())
+        .send()
+        .await
+        .map_err(|e| BrokerageError::CoreBrokerageError)?;
+    if !res.status().is_success() {
+        let status = res.status().as_u16();
+        let message = res.text().await.unwrap(); //.json::<ApiResponse>().unwrap();
+        error!("Failed to open position with reason: {}", message.clone());
+
+        let err = ApiLayerError { status, message };
+        return Err(BrokerageError::CoreBrokerageError);
+    }
+
+    let res = res
+        .json::<CreateDeletePositionResponse>()
+        .await
+        .map_err(|e| BrokerageError::CoreBrokerageError)?;
+
+    Ok(())
 }

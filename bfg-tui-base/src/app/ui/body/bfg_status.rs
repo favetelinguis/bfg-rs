@@ -1,5 +1,6 @@
 use crate::app::state::AppState;
 use crate::App;
+use bfg_core::models::{AccountUpdate, MarketUpdate, SystemState, SystemValues};
 use ig_brokerage_adapter::realtime::models::{OpenPositionUpdate, OpuStatus};
 use std::borrow::Borrow;
 use tui::backend::Backend;
@@ -8,7 +9,6 @@ use tui::style::{Color, Style};
 use tui::text::{Span, Spans};
 use tui::widgets::{Block, BorderType, Borders, Cell, Paragraph, Row, Table};
 use tui::Frame;
-use bfg_core::models::{AccountUpdate, MarketUpdate, SystemState, SystemValues};
 
 pub fn draw_bfg_status<'a, B>(rect: &mut Frame<'a, B>, chunk: Rect, app: &App)
 where
@@ -274,18 +274,42 @@ pub fn draw_account_info<'a>(state: &AccountUpdate) -> Paragraph<'a> {
 }
 pub fn draw_system_info<'a>(state: &SystemState) -> Paragraph<'a> {
     let (state, system_values) = match state {
-        SystemState::Setup => ("Setup", &SystemValues { count: 0 }),
-        SystemState::Entry(v) => ("Entry", v),
-        SystemState::Exit(v) => ("Exit", v),
-        SystemState::AwaitingEntryConfirmation(v) => ("AwaitingEntryConfirmation", v),
-        SystemState::AwaitingExitConfirmation(v) => ("AwaitingExitConfirmation", v),
+        SystemState::Setup => ("Setup", None),
+        SystemState::SetupWorkingOrder(v) => ("SetupWorkingOrder", Some(v)),
+        SystemState::ManageOrder(v) => ("ManageOrder", Some(v)),
     };
 
     let status = format!("Status: {}", state);
-    let text = format!("Count: {}", system_values.count);
+    let or_high_ask = format!(
+        "OR High Ask: {}",
+        system_values
+            .map(|a| a.or_high_ask.to_string())
+            .unwrap_or_default()
+    );
+    let or_low_ask = format!(
+        "OR Low Ask: {}",
+        system_values
+            .map(|a| a.or_low_ask.to_string())
+            .unwrap_or_default()
+    );
+    let or_high_bid = format!(
+        "OR High Bid: {}",
+        system_values
+            .map(|a| a.or_high_bid.to_string())
+            .unwrap_or_default()
+    );
+    let or_low_bid = format!(
+        "OR Low Bid: {}",
+        system_values
+            .map(|a| a.or_low_bid.to_string())
+            .unwrap_or_default()
+    );
     Paragraph::new(vec![
         Spans::from(Span::raw(status)),
-        Spans::from(Span::raw(text)),
+        Spans::from(Span::raw(or_high_ask)),
+        Spans::from(Span::raw(or_low_ask)),
+        Spans::from(Span::raw(or_high_bid)),
+        Spans::from(Span::raw(or_low_bid)),
     ])
     .style(Style::default().fg(Color::LightCyan))
     .alignment(Alignment::Left)

@@ -4,10 +4,10 @@ use crate::inputs::key::Key;
 use crate::io::IoEvent;
 use crate::ui::menu::MenuItem;
 use crate::ui::menu::MenuItem::{Help, Logs};
+use bfg_core::models::{AccountUpdate, MarketUpdate, SystemState};
 use ig_brokerage_adapter::realtime::models::OpenPositionUpdate;
 use log::{debug, error, warn};
 use tokio::sync::mpsc;
-use bfg_core::models::{AccountUpdate, MarketUpdate, SystemState};
 
 pub mod actions;
 pub mod state;

@@ -1,5 +1,6 @@
-use crate::realtime::models::{OpenPositionUpdate, TradeConfirmationUpdate};
+use crate::realtime::models::{OpenPositionUpdate, TradeConfirmationUpdate, WorkingOrderUpdate};
 use bfg_core::models::{AccountUpdate, MarketUpdate};
+use log::{error, info, warn};
 use std::borrow::BorrowMut;
 
 type MarketState = (
@@ -27,21 +28,33 @@ type AccountState = (
 
 pub fn parse_trade_update(
     msg: &str,
-) -> (Option<TradeConfirmationUpdate>, Option<OpenPositionUpdate>) {
+) -> (
+    Option<TradeConfirmationUpdate>,
+    Option<OpenPositionUpdate>,
+    Option<WorkingOrderUpdate>,
+) {
     let parts: Vec<&str> = msg.trim().split('|').collect();
 
     let conf = if parts[0].starts_with('{') {
+        warn!("CONFIRMS {}", parts[0]);
         serde_json::from_str::<TradeConfirmationUpdate>(parts[0]).ok()
     } else {
         None
     };
     let opu = if parts[1].starts_with('{') {
+        info!("OPU {}", parts[1]);
         serde_json::from_str::<OpenPositionUpdate>(parts[1]).ok()
     } else {
         None
     };
+    let wou = if parts[2].starts_with('{') {
+        error!("WOU {}", parts[2]);
+        serde_json::from_str::<WorkingOrderUpdate>(parts[2]).ok()
+    } else {
+        None
+    };
 
-    (conf, opu)
+    (conf, opu, wou)
 }
 
 pub fn parse_account_update(msg: &str) -> AccountUpdate {
@@ -157,6 +170,72 @@ mod tests {
 
     #[test]
     fn initial_market() {
+        // Rejected WO
+        let raw1 = r#"CONFIRMS {"direction":"SELL","epic":"IX.D.DAX.IFM1.IP","stopLevel":null,"│
+│         limitLevel":null,"dealReference":"Z32MH7P84M4TYPT","dealId":"DIAAAAJFCQH5VAQ","limitDistance":null,"stopDistance":null,"expiry":null,"affectedDeals":[],"dealStatus":"REJECTED","gu│
+│         aranteedStop":false,"trailingStop":false,"level":null,"reason":"ATTACHED_ORDER_LEVEL_ERROR","status":null,"size":null,"profit":null,"profitCurrency":null,"date":"2022-05-20T10:09:│
+│         07.865","channel":"PublicRestOTC"}"#;
+
+        // Open WO
+        let raw1 = r#"CONFIRMS {"direction":"SELL","epic":"IX.D.DAX.IFM1.IP","stopLevel":null,"│
+│         limitLevel":null,"dealReference":"9YQQR7MPUKUTYPH","dealId":"DIAAAAJFCSMG8AJ","limitDistance":null,"stopDistance":null,"expiry":"-","affectedDeals":[{"dealId":"DIAAAAJFCSMG8AJ","s│
+│         tatus":"OPENED"}],"dealStatus":"ACCEPTED","guaranteedStop":false,"trailingStop":false,"level":14400,"reason":"SUCCESS","status":"OPEN","size":1,"profit":null,"profitCurrency":null│
+│         ,"date":"2022-05-20T10:14:27.134","channel":"PublicRestOTC"}"#;
+        let raw1 = r#"OPU {"dealReference":"9YQQR7MPUKUTYPH","dealId":"DIAAAAJFCSMG8AJ","direction":"SELL","epic":"IX.D.DAX.IFM1.IP","status":"OPEN",│
+│         "dealStatus":"ACCEPTED","level":14400,"size":1,"timestamp":"2022-05-20T10:14:27.000","channel":"PublicRestOTC","expiry":"-","currency":"EUR","stopDistance":null,"limitDistance":nu│
+│         ll,"guaranteedStop":false,"orderType":"LIMIT","timeInForce":"GOOD_TILL_CANCELLED","goodTillDate":null}"#;
+
+        // Manual close WO
+        let raw1 = r#"OPU {"dealReference":"9YQQR7MPUKUTYPH","dealId":"DIAAAAJFCSMG8AJ","direction":"SELL","epic":"IX.D.DAX.IFM1.IP","status":"DELETE│
+│         D","dealStatus":"ACCEPTED","level":14400,"size":1,"timestamp":"2022-05-20T10:17:29.841","channel":"PublicRestOTC","expiry":"-","currency":"EUR","stopDistance":null,"limitDistance"│
+│         :null,"guaranteedStop":false,"orderType":"LIMIT","timeInForce":"GOOD_TILL_CANCELLED","goodTillDate":null}"#;
+        // Manual close position
+        let raw1 = r#"OPU {"dealReference":"YYW6WTG7R7UTYPT","dealId":"DIAAAAJFCTRTYBB","direction":"SELL","epic":"IX.D.DAX.IFM1.IP","status":"DELETE│
+│         D","dealStatus":"ACCEPTED","level":14151,"size":0,"timestamp":"2022-05-20T10:40:17.609","channel":"OSAutoStopFill","dealIdOrigin":"DIAAAAJFCTRTYBB","expiry":"-","stopLevel":14151,│
+│         "limitLevel":null,"guaranteedStop":false}"#;
+
+        // Delete WO API
+        let raw1 = r#"CONFIRMS {"direction":"SELL","epic":"IX.D.DAX.IFM1.IP","stopLevel":null,"│
+│         limitLevel":null,"dealReference":"TZB5W79YXN8TYPT","dealId":"DIAAAAJFCSBZXA6","limitDistance":10,"stopDistance":10,"expiry":"-","affectedDeals":[{"dealId":"DIAAAAJFCSBZXA6","statu│
+│         s":"DELETED"}],"dealStatus":"ACCEPTED","guaranteedStop":false,"trailingStop":false,"level":14400,"reason":"SUCCESS","status":"DELETED","size":1,"profit":null,"profitCurrency":null│
+│         ,"date":"2022-05-20T10:19:47.837","channel":"PublicRestOTC"}"#;
+        let raw1 = r#"OPU {"dealReference":"TZB5W79YXN8TYPT","dealId":"DIAAAAJFCSBZXA6","direction":"SELL","epic":"IX.D.DAX.IFM1.IP","status":"DELETE│
+│         D","dealStatus":"ACCEPTED","level":14400,"size":1,"timestamp":"2022-05-20T10:19:47.829","channel":"PublicRestOTC","expiry":"-","currency":"EUR","stopDistance":10,"limitDistance":1│
+│         0,"guaranteedStop":false,"orderType":"LIMIT","timeInForce":"GOOD_TILL_CANCELLED","goodTillDate":null}"#;
+
+        // WO gets triggered to position
+        let raw1 = r#"OPU {"dealReference":"YYW6WTG7R7UTYPT","dealId":"DIAAAAJFCTRTYBB","direction":"SELL","epic":"IX.D.DAX.IFM1.IP","status":"DELETE│
+│         D","dealStatus":"ACCEPTED","level":14147,"size":1,"timestamp":"2022-05-20T10:31:00.265","channel":"PublicRestOTC","expiry":"-","currency":"EUR","stopDistance":null,"limitDistance"│
+│         :null,"guaranteedStop":false,"orderType":"LIMIT","timeInForce":"GOOD_TILL_CANCELLED","goodTillDate":null}"#;
+        let raw1 = r#"OPU {"dealReference":"YYW6WTG7R7UTYPT","dealId":"DIAAAAJFCTRTYBB","direction":"SELL","epic":"IX.D.DAX.IFM1.IP","status":"OPEN",│
+│         "dealStatus":"ACCEPTED","level":14147,"size":1,"timestamp":"2022-05-20T10:31:00.265","channel":"OSAutoStopFill","dealIdOrigin":"DIAAAAJFCTRTYBB","expiry":"-","stopLevel":null,"lim│
+│         itLevel":null,"guaranteedStop":false}"#;
+
+        // WO gets updated with floating stop
+        let raw1 = r#"CONFIRMS {"direction":"SELL","epic":"IX.D.DAX.IFM1.IP","stopLevel":14155,│
+│         "limitLevel":null,"dealReference":"YYW6WTG7R7UTYPT","dealId":"DIAAAAJFCTRTYBB","limitDistance":null,"stopDistance":null,"expiry":"-","affectedDeals":[{"dealId":"DIAAAAJFCTRTYBB","│
+│         status":"AMENDED"}],"dealStatus":"ACCEPTED","guaranteedStop":false,"trailingStop":true,"level":14147.0000,"reason":"SUCCESS","status":"AMENDED","size":1,"profit":null,"profitCurre│
+│         ncy":null,"date":"2022-05-20T10:35:03.473","channel":"PublicRestOTC"}"#;
+        let raw1 = r#"OPU {"dealReference":"YYW6WTG7R7UTYPT","dealId":"DIAAAAJFCTRTYBB","direction":"SELL","epic":"IX.D.DAX.IFM1.IP","status":"UPDATE│
+│         D","dealStatus":"ACCEPTED","level":14147.0000,"size":1,"timestamp":"2022-05-20T10:35:03.466","channel":"OSAutoStopFill","dealIdOrigin":"DIAAAAJFCTRTYBB","expiry":"-","stopLevel":1│
+│         4155,"limitLevel":null,"guaranteedStop":false}"#;
+
+        // 3 st floating stop updates
+        let raw1 = r#"OPU {"dealReference":"YYW6WTG7R7UTYPT","dealId":"DIAAAAJFCTRTYBB","direction":"SELL","epic":"IX.D.DAX.IFM1.IP","status":"UPDATE│
+│         D","dealStatus":"ACCEPTED","level":14147.0000,"size":1,"timestamp":"2022-05-20T10:35:16.063","channel":"OSAutoStopFill","dealIdOrigin":"DIAAAAJFCTRTYBB","expiry":"-","stopLevel":1│
+│         4154,"limitLevel":null,"guaranteedStop":false}"#;
+        let raw1 = r#"OPU {"dealReference":"YYW6WTG7R7UTYPT","dealId":"DIAAAAJFCTRTYBB","direction":"SELL","epic":"IX.D.DAX.IFM1.IP","status":"UPDATE│
+│         D","dealStatus":"ACCEPTED","level":14147.0000,"size":1,"timestamp":"2022-05-20T10:35:23.170","channel":"OSAutoStopFill","dealIdOrigin":"DIAAAAJFCTRTYBB","expiry":"-","stopLevel":1│
+│         4153,"limitLevel":null,"guaranteedStop":false}"#;
+        let raw1 = r#"OPU {"dealReference":"YYW6WTG7R7UTYPT","dealId":"DIAAAAJFCTRTYBB","direction":"SELL","epic":"IX.D.DAX.IFM1.IP","status":"UPDATE│
+│         D","dealStatus":"ACCEPTED","level":14147.0000,"size":1,"timestamp":"2022-05-20T10:36:24.131","channel":"OSAutoStopFill","dealIdOrigin":"DIAAAAJFCTRTYBB","expiry":"-","stopLevel":1│
+│         4152,"limitLevel":null,"guaranteedStop":false}"#;
+
+        // Floating stop get hit
+        let raw1 = r#"OPU {"dealReference":"YYW6WTG7R7UTYPT","dealId":"DIAAAAJFCTRTYBB","direction":"SELL","epic":"IX.D.DAX.IFM1.IP","status":"DELETE│
+│         D","dealStatus":"ACCEPTED","level":14151,"size":0,"timestamp":"2022-05-20T10:40:17.609","channel":"OSAutoStopFill","dealIdOrigin":"DIAAAAJFCTRTYBB","expiry":"-","stopLevel":14151,│
+│         "limitLevel":null,"guaranteedStop":false}"#;
+
         let res1 = parse_trade_update("{\"direction\":\"BUY\",\"epic\":\"IX.D.DAX.IFMM.IP\",\"stopLevel\":14192.3,\"limitLevel\":14202.3,\"dealReference\":\"APPPA\",\"dealId\":\"DIAAAAJEBA9SKAW\",\"limitDistance\":null,\"stopDistance\":null,\"expiry\":\"-\",\"affectedDeals\":[{\"dealId\":\"DIAAAAJEBA9SKAW\",\"status\":\"OPENED\"}],\"dealStatus\":\"ACCEPTED\",\"guaranteedStop\":false,\"trailingStop\":false,\"level\":14197.3,\"reason\":\"SUCCESS\",\"status\":\"OPEN\",\"size\":1,\"profit\":null,\"profitCurrency\":null,\"date\":\"2022-05-17T13:43:18.425\",\"channel\":\"PublicRestOTC\"}|");
 
         let res2 = parse_trade_update("#|{\"dealReference\":\"APPPA\",\"dealId\":\"DIAAAAJEBA9SKAW\",\"direction\":\"BUY\",\"epic\":\"IX.D.DAX.IFMM.IP\",\"status\":\"OPEN\",\"dealStatus\":\"ACCEPTED\",\"level\":14197.3,\"size\":1,\"timestamp\":\"2022-05-17T13:43:18.414\",\"channel\":\"PublicRestOTC\",\"dealIdOrigin\":\"DIAAAAJEBA9SKAW\",\"expiry\":\"-\",\"stopLevel\":14192.3,\"limitLevel\":14202.3,\"guaranteedStop\":false}");
@@ -166,7 +245,6 @@ mod tests {
 
     #[test]
     fn bla() {
-
         let a = serde_json::from_str::<TradeConfirmationUpdate>("{\"direction\":\"BUY\",\"epic\":\"IX.D.DAX.IFMM.IP\",\"stopLevel\":14192.3,\"limitLevel\":14202.3,\"dealReference\":\"APPPA\",\"dealId\":\"DIAAAAJEBA9SKAW\",\"limitDistance\":null,\"stopDistance\":null,\"expiry\":\"-\",\"affectedDeals\":[{\"dealId\":\"DIAAAAJEBA9SKAW\",\"status\":\"OPENED\"}],\"dealStatus\":\"ACCEPTED\",\"guaranteedStop\":false,\"trailingStop\":false,\"level\":14197.3,\"reason\":\"SUCCESS\",\"status\":\"OPEN\",\"size\":1,\"profit\":null,\"profitCurrency\":null,\"date\":\"2022-05-17T13:43:18.425\",\"channel\":\"PublicRestOTC\"}").unwrap();
         let b = 3;
     }

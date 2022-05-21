@@ -2,8 +2,8 @@ use crate::realtime::models::{Mode, TlcpRequest, TlcpResponse};
 use crate::realtime::notifications::{
     parse_account_update, parse_market_update, parse_trade_update,
 };
-use futures_util::{StreamExt, SinkExt};
 use crate::{BrokerageError, RealtimeEvent, RestDetails};
+use futures_util::{SinkExt, StreamExt};
 use http::HeaderValue;
 use log::{error, info, warn};
 use std::str::FromStr;
@@ -19,8 +19,7 @@ pub mod notifications;
 #[derive(Debug)]
 struct Tlcp(TlcpRequest);
 
-pub struct IgStreamClient {
-}
+pub struct IgStreamClient {}
 
 impl IgStreamClient {
     pub async fn start(
@@ -110,7 +109,11 @@ impl IgStreamClient {
                             cloned_tx
                                 .send(Tlcp(TlcpRequest::Subscribe {
                                     item: "TRADE:ZQVBB".to_string(),
-                                    fields: vec!["CONFIRMS".to_string(), "OPU".to_string()],
+                                    fields: vec![
+                                        "CONFIRMS".to_string(),
+                                        "OPU".to_string(),
+                                        "WOU".to_string(),
+                                    ],
                                     mode: Mode::Distinct,
                                     req_id: 3,
                                     sub_id: 3,
@@ -141,7 +144,7 @@ impl IgStreamClient {
                                 .unwrap(),
                             3 => {
                                 // Simpler since distinct mode and only one value so no need to split on |
-                                let (confirms, open_position_updates) =
+                                let (confirms, open_position_updates, working_orders_updates) =
                                     parse_trade_update(fields_values);
                                 // Should be used by trading system
                                 if let Some(confs) = confirms {
@@ -152,6 +155,11 @@ impl IgStreamClient {
                                 // Should be used by GUI
                                 if let Some(opu) = open_position_updates {
                                     tx.send(RealtimeEvent::AccountPositionUpdate(opu))
+                                        .await
+                                        .unwrap()
+                                }
+                                if let Some(wou) = working_orders_updates {
+                                    tx.send(RealtimeEvent::WorkingOrderUpdate(wou))
                                         .await
                                         .unwrap()
                                 }

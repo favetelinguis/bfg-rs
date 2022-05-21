@@ -1,8 +1,11 @@
 use crate::errors::BrokerageError;
-use crate::realtime::models::{OpenPositionUpdate, RestDetails, TradeConfirmationUpdate};
+use crate::realtime::models::{
+    OpenPositionUpdate, RestDetails, TradeConfirmationUpdate, WorkingOrderUpdate,
+};
 use crate::realtime::IgStreamClient;
-use crate::rest::models::AccessTokenResponse;
-use bfg_core::models::{AccountUpdate, Decision, MarketUpdate, OrderDetails};
+use crate::rest::models::{AccessTokenResponse, FetchDataResponse};
+use bfg_core::models::{AccountUpdate, DataUpdate, Decision, FetchDataDetails, LimitOrderDetails, MarketOrderDetails, MarketUpdate, OhlcPrice, Price, TradeConfirmation, WorkingOrderDetails};
+use bfg_core::BfgEvent;
 use reqwest::Client;
 use std::borrow::Borrow;
 use std::env;
@@ -19,6 +22,7 @@ pub enum RealtimeEvent {
     AccountEvent(AccountUpdate),
     TradeConfirmation(TradeConfirmationUpdate),
     AccountPositionUpdate(OpenPositionUpdate),
+    WorkingOrderUpdate(WorkingOrderUpdate),
     StreamStatus(String),
     RefreshToken,
 }
@@ -125,50 +129,89 @@ impl IgBrokerageApi {
         }
     }
 
-    pub async fn execute_decision(&self, decision: Decision) -> Result<(), BrokerageError> {
+    pub async fn execute_decision(
+        &self,
+        decision: Decision,
+    ) -> Result<Option<BfgEvent>, BrokerageError> {
         if let SessionState::HasSession(AccessTokenResponse {
             ref access_token, ..
         }) = self.session
         {
             match decision {
-                Decision::Buy(OrderDetails {
-                    direction,
-                    size: _,
-                    price,
-                }) => {
-                    return rest::open_position(
+                Decision::FetchData(FetchDataDetails { start, end }) => {
+                    let res = rest::fetch_data(
+                        self.http_client.clone(),
+                        self.connection_details.borrow(),
+                        access_token,
+                        start.as_str(),
+                        end.as_str(),
+                    )
+                    .await
+                    .expect("Fetch data should never fails doo");
+                    return Ok(Some(BfgEvent::Data(create_data_update(res))));
+                }
+                Decision::CreateWorkingOrder(WorkingOrderDetails {
+                                                 direction, price, reference
+                                             }) => {
+                    rest::open_working_order(
                         self.http_client.clone(),
                         self.connection_details.borrow(),
                         access_token,
                         direction,
                         price,
-                        "APPPA".to_string(),
+                        format!("{:?}", reference).as_str(),
                     )
                     .await;
                 }
-                Decision::Sell(OrderDetails {
-                    direction,
-                    size: _,
-                    price,
-                }) => {
-                    return rest::close_position(
+                Decision::CancelWorkingOrder(deal_id) => {
+                    rest::delete_working_order(
                         self.http_client.clone(),
                         self.connection_details.borrow(),
                         access_token,
-                        direction,
-                        price,
-                        "APPPA".to_string(),
+                        deal_id.as_str(),
                     )
-                    .await;
+                        .await;
                 }
-                Decision::NoOp => return Ok(()),
-                _ => {
-                    return Err(BrokerageError::Error(
-                        "Unable to execute decision".to_string(),
-                    ));
+                Decision::UpdateWithTrailingStop(deal_id, stop_level) => {
+                    rest::edit_position(
+                        self.http_client.clone(),
+                        self.connection_details.borrow(),
+                        access_token,
+                        deal_id.as_str(),
+                        stop_level
+                    )
+                        .await;
                 }
+                Decision::NoOp => return Ok(None),
             }
         }
-        Ok(())
+        Ok(None)
     }
+}
+
+fn create_data_update(res: FetchDataResponse) -> DataUpdate {
+    let ohlc = res
+        .prices
+        .iter()
+        .map(|p| OhlcPrice {
+            open: Price {
+                bid: p.open_price.bid,
+                ask: p.open_price.ask,
+            },
+            high: Price {
+                bid: p.high_price.bid,
+                ask: p.high_price.ask,
+            },
+            low: Price {
+                bid: p.low_price.bid,
+                ask: p.low_price.ask,
+            },
+            close: Price {
+                bid: p.close_price.bid,
+                ask: p.close_price.ask,
+            },
+        })
+        .collect();
+
+    DataUpdate { prices: ohlc }
 }

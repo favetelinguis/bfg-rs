@@ -1,5 +1,7 @@
 use crate::BrokerageError;
-use bfg_core::models::{BfgTradeConfirmationStatus, BfgTradeStatus, MarketUpdate, TradeConfirmation};
+use bfg_core::models::{
+    BfgTradeStatus, MarketUpdate, TradeConfirmation,
+};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
@@ -69,7 +71,37 @@ pub enum AffectedDealStatus {
     PARTIALLY_CLOSED,
 }
 
-// TODO Not used atm not sure i will use it
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct WorkingOrderUpdate {
+    pub direction: String,
+    #[serde(rename = "limitDistance")]
+    pub limit_distance: u8,
+    #[serde(rename = "dealId")]
+    pub deal_id: String,
+    #[serde(rename = "stopDistance")]
+    pub stop_distance: u8,
+    pub expiry: String,
+    pub timestamp: String,
+    pub size: usize,
+    pub status: OpuStatus,
+    pub epic: String,
+    pub level: f64,
+    #[serde(rename = "guaranteedStop")]
+    pub guaranteed_stop: bool,
+    #[serde(rename = "dealReference")]
+    pub deal_reference: String,
+    #[serde(rename = "dealStatus")]
+    pub deal_status: DealStatus,
+    pub currency: String,
+    #[serde(rename = "orderType")]
+    pub order_type: String,
+    #[serde(rename = "timeInForce")]
+    pub time_in_force: String,
+    #[serde(rename = "goodTillDate")]
+    pub good_till_date: String,
+    pub channel: String,
+}
+
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct OpenPositionUpdate {
     #[serde(rename = "dealReference")]
@@ -80,7 +112,7 @@ pub struct OpenPositionUpdate {
     pub epic: String,
     pub status: OpuStatus,
     #[serde(rename = "dealStatus")]
-    pub deal_status: OpuDealStatus,
+    pub deal_status: DealStatus,
     pub level: f64,
     pub size: usize,
     pub timestamp: String,
@@ -103,11 +135,14 @@ pub enum OpuStatus {
     DELETED,
 }
 
-impl From<DealStatus> for BfgTradeConfirmationStatus {
-    fn from(input: DealStatus) -> Self {
+impl From<PositionStatus> for bfg_core::models::ConfirmsStatus {
+    fn from(input: PositionStatus) -> Self {
         match input {
-            DealStatus::ACCEPTED=> BfgTradeConfirmationStatus::ACCEPTED,
-            DealStatus::REJECTED=> BfgTradeConfirmationStatus::REJECTED,
+            PositionStatus::OPEN => bfg_core::models::ConfirmsStatus::OPEN,
+            PositionStatus::CLOSED => bfg_core::models::ConfirmsStatus::CLOSED,
+            PositionStatus::PARTIALLY_CLOSED => bfg_core::models::ConfirmsStatus::PARTIALLY_CLOSED,
+            PositionStatus::AMENDED => bfg_core::models::ConfirmsStatus::AMENDED,
+            PositionStatus::DELETED => bfg_core::models::ConfirmsStatus::DELETED,
         }
     }
 }
@@ -122,10 +157,13 @@ impl From<OpuStatus> for BfgTradeStatus {
     }
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
-pub enum OpuDealStatus {
-    ACCEPTED,
-    REJECTED,
+impl From<DealStatus> for bfg_core::models::DealStatus{
+    fn from(input: DealStatus) -> Self {
+        match input {
+            DealStatus::ACCEPTED => bfg_core::models::DealStatus::ACCEPTED,
+            DealStatus::REJECTED => bfg_core::models::DealStatus::REJECTED,
+        }
+    }
 }
 
 #[derive(Debug)]

@@ -1,4 +1,5 @@
 use crate::realtime::models::Direction;
+use chrono::{NaiveDateTime, NaiveTime, Utc};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -81,6 +82,11 @@ pub enum CurrencyCode {
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
+pub enum WorkingOrderType {
+    LIMIT,
+    STOP,
+}
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub enum OrderType {
     LIMIT,
     MARKET,
@@ -112,6 +118,106 @@ impl ClosePositionRequest {
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct RefreshTokenRequest {
     pub refresh_token: String,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct EditPositionRequest {
+    #[serde(rename = "guaranteedStop")]
+    pub guaranteed_stop: bool,
+    #[serde(rename = "limitLevel")]
+    pub limit_level: f64,
+    #[serde(rename = "stopLevel")]
+    pub stop_level: f64,
+    #[serde(rename = "trailingStop")]
+    pub trailing_stop: bool,
+    #[serde(rename = "trailingStopDistance")]
+    pub trailing_stop_distance: u8,
+    #[serde(rename = "trailingStopIncrement")]
+    pub trailing_stop_increment: u8,
+}
+
+impl Default for EditPositionRequest {
+    fn default() -> Self {
+        Self {
+            guaranteed_stop: false,
+            stop_level: 0.,
+            limit_level: 0.,
+            trailing_stop_distance: 5,
+            trailing_stop_increment: 1,
+            trailing_stop: true,
+        }
+    }
+}
+
+impl EditPositionRequest {
+    pub fn new(stop_level: f64) -> Self {
+        Self {
+            stop_level,
+            ..EditPositionRequest::default()
+        }
+    }
+}
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct CreateWorkingOrderRequest {
+    #[serde(rename = "currencyCode")]
+    pub currency_code: CurrencyCode,
+    #[serde(rename = "dealReference")]
+    pub deal_reference: String,
+    pub direction: Direction,
+    pub epic: String,
+    pub expiry: String,
+    #[serde(rename = "forceOpen")]
+    pub force_open: bool,
+    #[serde(rename = "goodTillDate")]
+    pub good_till_date: String,
+    #[serde(rename = "guaranteedStop")]
+    pub guaranteed_stop: bool,
+    pub level: f64,
+    #[serde(rename = "limitDistance")]
+    pub limit_distance: u8,
+    pub size: u8,
+    #[serde(rename = "stopDistance")]
+    pub stop_distance: u8,
+    #[serde(rename = "timeInForce")]
+    pub time_in_force: String,
+    #[serde(rename = "type")]
+    pub working_order_type: WorkingOrderType,
+}
+
+impl Default for CreateWorkingOrderRequest {
+    fn default() -> Self {
+        let now = Utc::now();
+        let dax_utc_close_time = NaiveTime::from_hms(15, 45, 0); // DAX close at 16:00 UTC but want to close out WO 15 min before close
+        let dt_start = NaiveDateTime::new(now.naive_utc().date(), dax_utc_close_time);
+        let dt_start_format = dt_start.format("%Y-%m-%d %H:%M:%S").to_string();
+        Self {
+            time_in_force: "GOOD_TILL_DATE".to_string(),
+            good_till_date: dt_start_format,
+            deal_reference: "CHANGEME".to_string(),
+            epic: "IX.D.DAX.IFMM.IP".to_string(),
+            expiry: "-".to_string(),
+            direction: Direction::BUY,
+            size: 1,
+            working_order_type: WorkingOrderType::LIMIT,
+            level: 0.,
+            guaranteed_stop: false,
+            stop_distance: 10,
+            limit_distance: 10,
+            force_open: false, // This should be like netting?
+            currency_code: CurrencyCode::EUR,
+        }
+    }
+}
+
+impl CreateWorkingOrderRequest {
+    pub fn new(direction: Direction, level: f64, reference: &str) -> Self {
+        Self {
+            direction,
+            level,
+            deal_reference: reference.to_string(),
+            ..CreateWorkingOrderRequest::default()
+        }
+    }
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -173,5 +279,61 @@ impl From<bfg_core::models::Direction> for Direction {
             bfg_core::models::Direction::SELL => Direction::SELL,
             bfg_core::models::Direction::BUY => Direction::BUY,
         }
+    }
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct FetchDataResponse {
+    pub prices: Vec<DataPointResponse>,
+    #[serde(rename = "instrumentType")]
+    pub instrument_type: String,
+    pub allowance: Allowance,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct DataPointResponse {
+    #[serde(rename = "closePrice")]
+    pub close_price: PricePoint,
+    #[serde(rename = "highPrice")]
+    pub high_price: PricePoint,
+    #[serde(rename = "lowPrice")]
+    pub low_price: PricePoint,
+    #[serde(rename = "openPrice")]
+    pub open_price: PricePoint,
+    #[serde(rename = "lastTradedVolume")]
+    pub last_traded_volume: usize,
+    #[serde(rename = "snapshotTime")]
+    pub snapshot_time: String,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct PricePoint {
+    pub ask: f64,
+    pub bid: f64,
+    #[serde(rename = "lastTraded")]
+    pub last_traded: Option<f64>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct Allowance {
+    #[serde(rename = "allowanceExpiry")]
+    allowance_expiry: usize,
+    #[serde(rename = "remainingAllowance")]
+    remaining_allowance: usize,
+    #[serde(rename = "totalAllowance")]
+    total_allowance: usize,
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::realtime::models::{OpenPositionUpdate, TradeConfirmationUpdate};
+    use crate::realtime::notifications::parse_trade_update;
+    use crate::FetchDataResponse;
+
+    #[test]
+    fn initial_market() {
+        let a = r#"{"prices":[{"snapshotTime":"2022/05/18 09:00:00","openPrice":{"bid":14199.1,"ask":14200.5,"lastTraded":null},"closePrice":{"bid":14200.1,"ask":14201.5,"lastTraded":null},"highPrice":{"bid":14203.1,"ask":14204.5,"lastTraded":null},"lowPrice":{"bid":14189.6,"ask":14191.0,"lastTraded":null},"lastTradedVolume":444},{"snapshotTime":"2022/05/18 09:01:00","openPrice":{"bid":14199.6,"ask":14201.0,"lastTraded":null},"closePrice":{"bid":14187.6,"ask":14189.0,"lastTraded":null},"highPrice":{"bid":14201.6,"ask":14203.0,"lastTraded":null},"lowPrice":{"bid":14187.6,"ask":14189.0,"lastTraded":null},"lastTradedVolume":125}],"instrumentType":"INDICES","allowance":{"remainingAllowance":9987,"totalAllowance":10000,"allowanceExpiry":593999}}"#;
+        let r = serde_json::from_str::<FetchDataResponse>(a).unwrap();
+        let a = 3;
     }
 }

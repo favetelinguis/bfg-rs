@@ -1,15 +1,71 @@
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct SystemValues {
-    pub count: usize,
+use std::collections::HashMap;
+use std::str::FromStr;
+
+#[derive(Clone, Debug)]
+pub enum EntryMode {
+    OverBuyEntry,
+    BetweenSellEntry,
+    BetweenBuyEntry,
+    UnderSellEntry,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub enum PriceRelativeOr {
+    Over,
+    Between,
+    Under,
+}
+
+#[derive(Debug, Clone)]
+pub struct SystemValues {
+    pub or_high_ask: f64,                                         // Sälj kurs
+    pub or_low_ask: f64,                                          // Sälj kurs
+    pub or_high_bid: f64,                                         // Köp kurs
+    pub or_low_bid: f64,                                          // Köp kurs
+    pub working_orders: (Option<OrderState>, Option<OrderState>), // long, short
+}
+
+#[derive(Debug, Clone)]
+pub enum OrderState {
+    AwaitingWorkingOrderCreateConfirmation(WorkingOrderSystemDetails),
+    RejectedAtOpen(WorkingOrderReference, String, String),
+    AcceptedAtOpen(String),
+    WODeleted(String),
+    PositionOpen(String),
+    PositionOpenWithTrailingStop(String),
+    AwaitCancelConfirmation(String), // When in between and other side get filled
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct WorkingOrderSystemDetails {
+    pub deal_id: Option<String>,
+    pub requested_entry_level: f64,
+    pub actual_entry_level: Option<f64>,
+    pub requested_exit_level: Option<f64>,
+    pub actual_exit_level: Option<f64>,
+}
+
+impl WorkingOrderSystemDetails {
+    pub fn new(requested_entry_level: f64) -> Self {
+        Self {
+            requested_entry_level,
+            ..WorkingOrderSystemDetails::default()
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum WorkingOrderPlacement {
+    Over,
+    Between,
+    Under,
+}
+
+#[derive(Debug, Clone)]
 pub enum SystemState {
-    Setup,               // Await LTP to go over or_high or below or_low
-    Entry(SystemValues), // LTP touches or_high or or_low
-    AwaitingEntryConfirmation(SystemValues),
-    Exit(SystemValues), // After 10 seconds or if LTP is over or_low och below or_high
-    AwaitingExitConfirmation(SystemValues),
+    Setup,
+    SetupWorkingOrder(SystemValues),
+    ManageOrder(SystemValues),
 }
 
 impl Default for SystemState {
@@ -66,7 +122,48 @@ impl Default for AccountUpdate {
 
 #[derive(Debug, Clone)]
 pub struct TradeUpdate {
+    pub deal_status: DealStatus,
     pub status: BfgTradeStatus,
+    pub deal_id: String,
+    pub deal_reference: WorkingOrderReference,
+}
+
+#[derive(Debug, Clone)]
+pub struct WorkingOrderUpdate {
+    pub status: BfgTradeStatus,
+    pub deal_id: String,
+    pub deal_reference: String,
+    pub deal_status: DealStatus,
+    pub level: f64,
+}
+
+impl FromStr for WorkingOrderReference {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "OVER_LONG" => Ok(WorkingOrderReference::OVER_LONG),
+            "BETWEEN_LONG" => Ok(WorkingOrderReference::BETWEEN_LONG),
+            "BETWEEN_SHORT" => Ok(WorkingOrderReference::BETWEEN_SHORT),
+            "UNDER_SHORT" => Ok(WorkingOrderReference::UNDER_SHORT),
+            _ => Err(()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum DealStatus {
+    ACCEPTED,
+    REJECTED,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum ConfirmsStatus {
+    AMENDED,
+    CLOSED,
+    DELETED,
+    OPEN,
+    PARTIALLY_CLOSED,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -78,12 +175,11 @@ pub enum BfgTradeStatus {
 
 #[derive(Debug, Clone)]
 pub struct TradeConfirmation {
-    pub status: BfgTradeConfirmationStatus,
-}
-
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum BfgTradeConfirmationStatus {
-    ACCEPTED, REJECTED
+    pub deal_status: DealStatus,
+    pub status: Option<ConfirmsStatus>,
+    pub deal_id: String,
+    pub deal_reference: WorkingOrderReference,
+    pub reason: String,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -92,16 +188,37 @@ pub enum Direction {
     SELL,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum WorkingOrderReference {
+    OVER_LONG,
+    BETWEEN_LONG,
+    BETWEEN_SHORT,
+    UNDER_SHORT,
+}
+
 #[derive(Debug)]
-pub struct OrderDetails {
+pub struct MarketOrderDetails {
+    pub direction: Direction,
+    pub size: usize,
+}
+
+#[derive(Debug)]
+pub struct WorkingOrderDetails {
+    pub direction: Direction,
+    pub price: f64,
+    pub reference: WorkingOrderReference,
+}
+
+#[derive(Debug)]
+pub struct LimitOrderDetails {
     pub direction: Direction,
     pub size: usize,
     pub price: f64,
 }
 
-impl OrderDetails {
+impl LimitOrderDetails {
     pub fn new(direction: Direction, price: f64) -> Self {
-        OrderDetails {
+        LimitOrderDetails {
             direction,
             size: 1,
             price,
@@ -112,8 +229,57 @@ impl OrderDetails {
 #[derive(Debug)]
 pub enum Decision {
     NoOp,
-    Buy(OrderDetails),
-    Sell(OrderDetails),
-    SetupOr,
-    Quit,
+    CreateWorkingOrder(WorkingOrderDetails),
+    FetchData(FetchDataDetails),
+    CancelWorkingOrder(String),     // deal_id
+    UpdateWithTrailingStop(String, f64), // deal_id, stop_level
+}
+
+#[derive(Debug, Clone)]
+pub struct DataUpdate {
+    pub prices: Vec<OhlcPrice>,
+}
+
+#[derive(Debug, Clone)]
+pub struct OhlcPrice {
+    pub open: Price,
+    pub close: Price,
+    pub high: Price,
+    pub low: Price,
+}
+
+#[derive(Debug, Clone)]
+pub struct Price {
+    pub bid: f64,
+    pub ask: f64,
+}
+
+#[derive(Debug)]
+pub struct FetchDataDetails {
+    pub start: String, // yyy-MM-ddTHH:mm:ss
+    pub end: String,
+}
+#[cfg(test)]
+mod tests {
+    use chrono::TimeZone;
+    use chrono::{Local, NaiveDateTime, NaiveTime, SecondsFormat, Utc};
+    use std::str::FromStr;
+
+    #[test]
+    fn initial_market() {
+        let now = Utc::now();
+        let time_of_day = now.time();
+        let open_time = NaiveTime::from_hms(9, 0, 0);
+        let close_time = NaiveTime::from_hms(16, 30, 0);
+        let local_now = Local::now();
+        let dt = NaiveDateTime::new(now.naive_utc().date(), open_time);
+        let dt_format = dt.format("%Y-%m-%dT%H:%M:%S").to_string();
+        let t3 = format!(
+            "UTC now in RFC 3339 is: {}",
+            now.to_rfc3339_opts(SecondsFormat::Secs, false)
+        );
+        let updatetime = NaiveTime::from_str("06: 59: 27").unwrap();
+
+        let dd = 5;
+    }
 }

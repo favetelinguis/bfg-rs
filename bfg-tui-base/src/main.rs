@@ -1,4 +1,5 @@
 use bfg_core::models::{AccountUpdate, MarketUpdate, SystemState, TradeConfirmation, TradeUpdate};
+use std::str::FromStr;
 use bfg_core::{step_system, BfgEvent};
 use bfg_tui_base::app::App;
 use bfg_tui_base::io::handler::IoAsyncHandler;
@@ -6,11 +7,11 @@ use bfg_tui_base::io::IoEvent;
 use bfg_tui_base::start_ui;
 use dotenvy::dotenv;
 use eyre::Result;
+use ig_brokerage_adapter::realtime::models::{PositionStatus, TradeConfirmationUpdate};
 use ig_brokerage_adapter::{ConnectionDetails, IgBrokerageApi, RealtimeEvent};
-use log::LevelFilter;
+use log::{error, info, warn, LevelFilter};
 use std::sync::Arc;
 use tokio::select;
-use ig_brokerage_adapter::realtime::models::TradeConfirmationUpdate;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -57,12 +58,24 @@ async fn main() -> Result<()> {
                         offer: data.offer.or(a.market.offer),
                         bid: data.bid.or(a.market.bid),
                     };
-
-                    let (next_state, decision) =
+                    let (next_state, decisions) =
                         step_system(bfg_state.clone(), BfgEvent::Market(next_market.clone()));
-                    handler.execute_decision(decision).await.unwrap();
-
                     bfg_state = next_state;
+
+                    let mut events = Vec::new();
+                    for d in decisions {
+                        events.push(handler.execute_decision(d).await.unwrap());
+                    }
+
+                    // // A system step could result in more events
+                    while let Some(event) = events.iter().next().unwrap() {
+                        let (next_state, more_decisions) = step_system(bfg_state.clone(), event.clone());
+                        bfg_state = next_state;
+
+                        for d in more_decisions {
+                            events.push(handler.execute_decision(d).await.unwrap());
+                        }
+                    }
 
                     a.market = next_market;
                     a.system = bfg_state.clone();
@@ -87,29 +100,67 @@ async fn main() -> Result<()> {
                     a.system = bfg_state.clone();
                 }
                 RealtimeEvent::TradeConfirmation(data) => {
-                    let (next_state, decision) = step_system(
+                    let (next_state, decisions) = step_system(
                         bfg_state.clone(),
                         BfgEvent::TradeConfirmation(TradeConfirmation {
-                            status: data.deal_status.into(),
+                            deal_status: data.deal_status.into(),
+                            status: data.status.map(|i: PositionStatus| i.into()),
+                            deal_id: data.deal_id,
+                            deal_reference: FromStr::from_str(data.deal_reference.as_str()).expect("We should only use deal references that are expected"),
+                            reason: data.reason,
                         }),
                     );
-                    handler.execute_decision(decision).await.unwrap();
                     bfg_state = next_state;
+
+                    let mut events = Vec::new();
+                    for d in decisions {
+                        events.push(handler.execute_decision(d).await.unwrap());
+                    }
+                    // // A system step could result in more events
+                    while let Some(event) = events.iter().next().unwrap() {
+                        let (next_state, more_decisions) = step_system(bfg_state.clone(), event.clone());
+                        bfg_state = next_state;
+
+                        for d in more_decisions {
+                            events.push(handler.execute_decision(d).await.unwrap());
+                        }
+                    }
+
                     let mut a = app_bfg.write().await;
                     a.system = bfg_state.clone();
                 }
                 RealtimeEvent::AccountPositionUpdate(data) => {
-                    let (next_state, decision) = step_system(
+                    let (next_state, decisions) = step_system(
                         bfg_state.clone(),
                         BfgEvent::Trade(TradeUpdate {
+                            deal_status: data.deal_status.clone().into(),
                             status: data.status.clone().into(),
+                            deal_id: data.deal_id.clone(),
+                            deal_reference: FromStr::from_str(data.deal_reference.as_str()).expect("We should only use deal references that are expected"),
                         }),
                     );
-                    handler.execute_decision(decision).await.unwrap();
                     bfg_state = next_state;
+
+                    let mut events = Vec::new();
+                    for d in decisions {
+                        events.push(handler.execute_decision(d).await.unwrap());
+                    }
+                    // // A system step could result in more events
+                    while let Some(event) = events.iter().next().unwrap() {
+                        let (next_state, more_decisions) = step_system(bfg_state.clone(), event.clone());
+                        bfg_state = next_state;
+
+                        for d in more_decisions {
+                            events.push(handler.execute_decision(d).await.unwrap());
+                        }
+                    }
+
                     let mut a = app_bfg.write().await;
                     a.trade = Some(data); // Also update UI
                     a.system = bfg_state.clone();
+                }
+                RealtimeEvent::WorkingOrderUpdate(data) => {
+                    error!("WOU never seen this before: {:?}", data);
                 }
                 RealtimeEvent::StreamStatus(data) => {
                     let mut a = app_bfg.write().await;
