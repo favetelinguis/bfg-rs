@@ -40,6 +40,10 @@ where
 }
 
 pub fn draw_market_info<'a>(state: &MarketUpdate) -> Paragraph<'a> {
+    let bid = state.bid.unwrap_or_default();
+    let offer = state.offer.unwrap_or_default();
+    let real_spread = offer - bid;
+    let spread = format!("Spread: {:.1}", real_spread);
     let bid = format!(
         "Bid: {}",
         state.bid.map(|n| n.to_string()).unwrap_or_default()
@@ -48,10 +52,7 @@ pub fn draw_market_info<'a>(state: &MarketUpdate) -> Paragraph<'a> {
         "Offer: {}",
         state.offer.map(|n| n.to_string()).unwrap_or_default()
     );
-    let market_state = format!(
-        "Market state: {:?}",
-        state.market_state
-    );
+    let market_state = format!("Market state: {:?}", state.market_state);
     let market_delay = format!(
         "Market delay: {}",
         state
@@ -64,6 +65,7 @@ pub fn draw_market_info<'a>(state: &MarketUpdate) -> Paragraph<'a> {
         state.update_time.clone().unwrap_or_default()
     );
     Paragraph::new(vec![
+        Spans::from(Span::raw(spread)),
         Spans::from(Span::raw(bid)),
         Spans::from(Span::raw(offer)),
         Spans::from(Span::raw(market_state)),
@@ -279,7 +281,23 @@ pub fn draw_system_info<'a>(state: &SystemState) -> Paragraph<'a> {
         SystemState::ManageOrder(v) => ("ManageOrder", Some(v)),
     };
 
-    let status = format!("Status: {}", state);
+    let status = format!("System Status: {}", state);
+    let mut order_state_long = "None".to_string();
+    let mut order_state_short = "None".to_string();
+    if let Some(SystemValues {
+        working_orders: (long, short),
+        ..
+    }) = system_values
+    {
+        if let Some(l) = long {
+            order_state_long = format!("{:?}", l);
+        }
+        if let Some(s) = short {
+            order_state_short = format!("{:?}", s);
+        }
+    }
+    let order_status_long = format!(" - Status Long: {:?}", order_state_long);
+    let order_status_short = format!(" - Status Short: {:?}", order_state_short);
     let or_high_ask = format!(
         "OR High Ask: {}",
         system_values
@@ -306,6 +324,8 @@ pub fn draw_system_info<'a>(state: &SystemState) -> Paragraph<'a> {
     );
     Paragraph::new(vec![
         Spans::from(Span::raw(status)),
+        Spans::from(Span::raw(order_status_long)),
+        Spans::from(Span::raw(order_status_short)),
         Spans::from(Span::raw(or_high_ask)),
         Spans::from(Span::raw(or_low_ask)),
         Spans::from(Span::raw(or_high_bid)),

@@ -7,9 +7,9 @@ use futures_util::{SinkExt, StreamExt};
 use http::HeaderValue;
 use log::{error, info, warn};
 use std::str::FromStr;
-use std::sync::{Arc};
-use tokio::sync::{Mutex};
+use std::sync::Arc;
 use tokio::sync::mpsc::{channel, Sender};
+use tokio::sync::Mutex;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use url::Url;
@@ -31,27 +31,24 @@ impl IgStreamClient {
     }
 
     pub async fn start(&self) -> Result<(), BrokerageError> {
-        let session = &*self.session.lock().await;
-        // Not nice but unsure how to handle this with spawn, will need to refactor much
-        if let SessionState::HasSession {
+        let SessionState {
             ref xst,
             ref cst,
             ref account,
             ref lightstreamer_endpoint,
-        } = session {
-            let mut url =
-                Url::parse(&format!("{}/lightstreamer", lightstreamer_endpoint)).unwrap();
-            url.set_scheme("wss").unwrap();
-            let mut request = url.into_client_request().unwrap();
-            request.headers_mut().insert(
-                "Sec-WebSocket-Protocol",
-                HeaderValue::from_str("TLCP-2.1.0.lightstreamer.com").unwrap(),
-            );
-            let (ws_stream, _) = connect_async(request).await.expect("Can't connect");
-            let (mut write, read) = ws_stream.split();
-            let (control_tx, mut control_rx) = channel(22);
-            let cloned_ws_tx = control_tx.clone();
-            let cloned_event_tx = self.tx.clone();
+        } = &*self.session.lock().await;
+        let mut url = Url::parse(&format!("{}/lightstreamer", lightstreamer_endpoint)).unwrap();
+        url.set_scheme("wss").unwrap();
+        let mut request = url.into_client_request().unwrap();
+        request.headers_mut().insert(
+            "Sec-WebSocket-Protocol",
+            HeaderValue::from_str("TLCP-2.1.0.lightstreamer.com").unwrap(),
+        );
+        let (ws_stream, _) = connect_async(request).await.expect("Can't connect");
+        let (mut write, read) = ws_stream.split();
+        let (control_tx, mut control_rx) = channel(22);
+        let cloned_ws_tx = control_tx.clone();
+        let cloned_event_tx = self.tx.clone();
 
         tokio::spawn(async move {
             info!("Starting IG Control");
@@ -66,7 +63,6 @@ impl IgStreamClient {
                 let messages = data.split_terminator("\r\n");
                 for m in messages {
                     // info!("WS: {:?}", m);
-                    println!("WS: {:?}", m);
                     match TlcpResponse::from_str(m).unwrap() {
                         TlcpResponse::SYNC { .. } => {} // TODO check dock for how to use
                         TlcpResponse::PROBE => cloned_event_tx
@@ -159,6 +155,7 @@ impl IgStreamClient {
                                     parse_trade_update(fields_values);
                                 // Should be used by trading system
                                 if let Some(confs) = confirms {
+                                    // info!("CONFS {:?}", confs,);
                                     cloned_event_tx
                                         .send(RealtimeEvent::TradeConfirmation(confs))
                                         .await
@@ -166,12 +163,14 @@ impl IgStreamClient {
                                 }
                                 // Should be used by GUI
                                 if let Some(opu) = open_position_updates {
+                                    // info!("OPU {:?}",opu);
                                     cloned_event_tx
                                         .send(RealtimeEvent::AccountPositionUpdate(opu))
                                         .await
                                         .unwrap()
                                 }
                                 if let Some(wou) = working_orders_updates {
+                                    // info!("WOU {:?}", wou);
                                     cloned_event_tx
                                         .send(RealtimeEvent::WorkingOrderUpdate(wou))
                                         .await
@@ -187,17 +186,15 @@ impl IgStreamClient {
             })
             .await;
         });
-            // Setup session
-            control_tx
-                .send(Tlcp(TlcpRequest::CreateSession {
-                    user: account.clone(),
-                    account_token: xst.clone(),
-                    client_token: cst.clone(),
-                }))
-                .await
-                .map_err(|_| BrokerageError::CoreBrokerageError)?;
+        // Setup session
+        control_tx
+            .send(Tlcp(TlcpRequest::CreateSession {
+                user: account.clone(),
+                account_token: xst.clone(),
+                client_token: cst.clone(),
+            }))
+            .await
+            .map_err(|_| BrokerageError::CoreBrokerageError)?;
         return Ok(());
-        }
-        return Err(BrokerageError::CoreBrokerageError);
     }
 }

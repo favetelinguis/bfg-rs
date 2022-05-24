@@ -260,9 +260,9 @@ pub struct CreateWorkingOrderRequest {
 impl Default for CreateWorkingOrderRequest {
     fn default() -> Self {
         let now = Utc::now();
-        let dax_utc_close_time = NaiveTime::from_hms(15, 45, 0); // DAX close at 16:00 UTC but want to close out WO 15 min before close
+        let dax_utc_close_time = NaiveTime::from_hms(15, 15, 0); // DAX close at 17:30 CET but want to close out WO 15 min before close sommartid CET = Stockholm tid
         let dt_start = NaiveDateTime::new(now.naive_utc().date(), dax_utc_close_time);
-        let dt_start_format = dt_start.format("%Y-%m-%d %H:%M:%S").to_string();
+        let dt_start_format = dt_start.format("%Y/%m/%d %H:%M:%S").to_string();
         Self {
             time_in_force: "GOOD_TILL_DATE".to_string(),
             good_till_date: dt_start_format,

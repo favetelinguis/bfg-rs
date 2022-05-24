@@ -28,9 +28,8 @@ pub struct SystemValues {
 #[derive(Debug, Clone)]
 pub enum OrderState {
     AwaitingWorkingOrderCreateConfirmation(WorkingOrderSystemDetails),
-    RejectedAtOpen(WorkingOrderReference, String, String),
+    RejectedAtOpen,
     AcceptedAtOpen(String),
-    WODeleted(String),
     PositionOpen(String),
     PositionOpenWithTrailingStop(String),
     AwaitCancelConfirmation(String), // When in between and other side get filled
@@ -85,7 +84,13 @@ pub struct MarketUpdate {
 
 #[derive(Debug, Clone)]
 pub enum MarketState {
-    CLOSED, OFFLINE, TRADEABLE, EDIT, AUCTION, AUCTION_NO_EDIT, SUSPENDED
+    CLOSED,
+    OFFLINE,
+    TRADEABLE,
+    EDIT,
+    AUCTION,
+    AUCTION_NO_EDIT,
+    SUSPENDED,
 }
 
 #[derive(Debug, Clone)]
@@ -204,7 +209,7 @@ pub struct TradeConfirmation {
     pub reason: String,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Direction {
     BUY,
     SELL,

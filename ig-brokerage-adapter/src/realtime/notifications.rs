@@ -1,8 +1,7 @@
 use crate::realtime::models::{OpenPositionUpdate, TradeConfirmationUpdate, WorkingOrderUpdate};
-use std::str::FromStr;
 use bfg_core::models::{AccountUpdate, MarketState, MarketUpdate};
-use log::{error, info, warn};
 use std::borrow::BorrowMut;
+use std::str::FromStr;
 
 type MarketState2 = (
     Option<f64>,
@@ -37,19 +36,16 @@ pub fn parse_trade_update(
     let parts: Vec<&str> = msg.trim().split('|').collect();
 
     let conf = if parts[0].starts_with('{') {
-        warn!("CONFIRMS {}", parts[0]);
         serde_json::from_str::<TradeConfirmationUpdate>(parts[0]).ok()
     } else {
         None
     };
     let opu = if parts[1].starts_with('{') {
-        info!("OPU {}", parts[1]);
         serde_json::from_str::<OpenPositionUpdate>(parts[1]).ok()
     } else {
         None
     };
     let wou = if parts[2].starts_with('{') {
-        error!("WOU {}", parts[2]);
         serde_json::from_str::<WorkingOrderUpdate>(parts[2]).ok()
     } else {
         None

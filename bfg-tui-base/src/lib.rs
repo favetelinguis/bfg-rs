@@ -39,7 +39,6 @@ pub async fn start_ui(app: &Arc<RwLock<App>>) -> Result<()> {
             let app = app.read().await;
             terminal.draw(|rect| ui::draw(rect, &app))?;
         }
-
         // Handle user input
         let result = match events.next().await {
             InputEvent::Input(key) => {

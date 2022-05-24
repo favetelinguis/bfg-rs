@@ -4,16 +4,17 @@ use crate::realtime::models::{
 };
 use crate::realtime::IgStreamClient;
 use crate::rest::models::FetchDataResponse;
-use crate::rest::IgRestClient;
+use crate::rest::{HasSession, IgRestClient};
 use bfg_core::models::{
     AccountUpdate, DataUpdate, Decision, FetchDataDetails, MarketOrderDetails, MarketUpdate,
     OhlcPrice, Price, TradeConfirmation, WorkingOrderDetails,
 };
 use bfg_core::BfgEvent;
 use std::env;
-use std::sync::{Arc};
-use tokio::sync::{Mutex};
+use std::sync::Arc;
+use log::error;
 use tokio::sync::mpsc::Sender;
+use tokio::sync::Mutex;
 
 pub mod errors;
 pub mod realtime;
@@ -29,15 +30,12 @@ pub enum RealtimeEvent {
     StreamStatus(String),
 }
 
-#[derive(Debug)]
-pub enum SessionState {
-    NoSession,
-    HasSession {
-        xst: String,
-        cst: String,
-        lightstreamer_endpoint: String,
-        account: String,
-    },
+#[derive(Debug, Default)]
+pub struct SessionState {
+    xst: String,
+    cst: String,
+    lightstreamer_endpoint: String,
+    account: String,
 }
 
 #[derive(Clone)]
@@ -63,28 +61,29 @@ impl ConnectionDetails {
     }
 }
 
+// TODO session should be an Option<Arc...> then use .expect in the states where it should always be set
 pub struct IgBrokerageApi {
-    session: Arc<Mutex<SessionState>>,
-    rest: IgRestClient,
-    stream: IgStreamClient,
+    _session: Arc<Mutex<SessionState>>,
+    rest: IgRestClient<HasSession>,
+    _stream: IgStreamClient,
 }
 
 impl IgBrokerageApi {
     pub async fn new(connection_details: ConnectionDetails, tx_out: Sender<RealtimeEvent>) -> Self {
-        let session = Arc::new(Mutex::new(SessionState::NoSession));
+        let session = Arc::new(Mutex::new(SessionState::default()));
 
         // Setup a session with rest client and make sure stream has proper connection details
-        let mut rest = IgRestClient::new(Arc::clone(&session), connection_details);
-        rest.create_session().await.unwrap();
+        let disconnected_rest = IgRestClient::new(Arc::clone(&session), connection_details);
+        let connected_rest = disconnected_rest.create_session().await.unwrap();
 
         // Connect to stream and setup subscriptions
         let stream = IgStreamClient::new(Arc::clone(&session), tx_out);
         stream.start().await.unwrap();
 
         Self {
-            session,
-            rest,
-            stream,
+            _session: session,
+            rest: connected_rest,
+            _stream: stream,
         }
     }
 
@@ -92,37 +91,38 @@ impl IgBrokerageApi {
         &self,
         decision: Decision,
     ) -> Result<Option<BfgEvent>, BrokerageError> {
-        let session = self.session.lock().await;
-        if let SessionState::HasSession {
-            ref xst, ref cst, ..
-        } = *session
-        {
-            match decision {
-                Decision::FetchData(FetchDataDetails { start, end }) => {
-                    let res = self
-                        .rest
-                        .fetch_data(start.as_str(), end.as_str())
-                        .await
-                        .expect("Fetch data should never fails doo");
-                    return Ok(Some(BfgEvent::Data(create_data_update(res))));
-                }
-                Decision::CreateWorkingOrder(WorkingOrderDetails {
-                    direction,
-                    price,
-                    reference,
-                }) => {
-                    self.rest
-                        .open_working_order(direction, price, format!("{:?}", reference).as_str())
-                        .await?;
-                }
-                Decision::CancelWorkingOrder(deal_id) => {
-                    self.rest.delete_working_order(deal_id.as_str()).await?;
-                }
-                Decision::UpdateWithTrailingStop(deal_id, stop_level) => {
-                    self.rest.edit_position(deal_id.as_str(), stop_level).await?;
-                }
-                Decision::NoOp => return Ok(None),
+        match decision {
+            Decision::FetchData(FetchDataDetails { start, end }) => {
+                error!("Fetching data");
+                let res = self
+                    .rest
+                    .fetch_data(start.as_str(), end.as_str())
+                    .await
+                    .expect("Fetch data should never fail doo");
+                return Ok(Some(BfgEvent::Data(create_data_update(res))));
+                // return Ok(Some(BfgEvent::Data(create_data_update_noargs())));
             }
+            Decision::CreateWorkingOrder(WorkingOrderDetails {
+                direction,
+                price,
+                reference,
+            }) => {
+                error!("Creating WO");
+                self.rest
+                    .open_working_order(direction, price, format!("{:?}", reference).as_str())
+                    .await?;
+            }
+            Decision::CancelWorkingOrder(deal_id) => {
+                error!("Cancel WO");
+                self.rest.delete_working_order(deal_id.as_str()).await?;
+            }
+            Decision::UpdateWithTrailingStop(deal_id, stop_level) => {
+                error!("Update with Trailing stop");
+                self.rest
+                    .edit_position(deal_id.as_str(), stop_level)
+                    .await?;
+            }
+            Decision::NoOp => return Ok(None),
         }
         Ok(None)
     }
@@ -153,4 +153,24 @@ fn create_data_update(res: FetchDataResponse) -> DataUpdate {
         .collect();
 
     DataUpdate { prices: ohlc }
+}
+
+fn create_data_update_noargs() -> DataUpdate {
+    let middle_high = 14050.6;
+    let middle_low = 14017.1;
+
+    let ohlc = OhlcPrice {
+        open: Price { ask: 0., bid: 0. },
+        high: Price {
+            ask: middle_high + 0.7,
+            bid: middle_high - 0.7,
+        },
+        low: Price {
+            ask: middle_low + 0.7,
+            bid: middle_low - 0.7,
+        },
+        close: Price { ask: 0., bid: 0. },
+    };
+
+    DataUpdate { prices: vec![ohlc] }
 }

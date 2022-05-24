@@ -9,6 +9,8 @@ use eyre::Result;
 use ig_brokerage_adapter::realtime::models::{PositionStatus, TradeConfirmationUpdate};
 use ig_brokerage_adapter::{ConnectionDetails, IgBrokerageApi, RealtimeEvent};
 use log::{error, info, warn, LevelFilter};
+use std::borrow::Borrow;
+use std::collections::LinkedList;
 use std::str::FromStr;
 use std::sync::Arc;
 use tokio::select;
@@ -54,23 +56,26 @@ async fn main() -> Result<()> {
                         offer: data.offer.or(a.market.offer),
                         bid: data.bid.or(a.market.bid),
                     };
+
                     let (next_state, decisions) =
                         step_system(bfg_state.clone(), BfgEvent::Market(next_market.clone()));
                     bfg_state = next_state;
 
-                    let mut events = Vec::new();
+                    let mut events = LinkedList::new();
                     for d in decisions {
-                        events.push(handler.execute_decision(d).await.unwrap());
+                        events.push_back(handler.execute_decision(d).await.unwrap());
                     }
 
                     // // A system step could result in more events
-                    while let Some(event) = events.iter().next().unwrap() {
-                        let (next_state, more_decisions) =
-                            step_system(bfg_state.clone(), event.clone());
-                        bfg_state = next_state;
+                    while let Some(maybe_event) = events.pop_front() {
+                        if let Some(event) = maybe_event {
+                            let (next_state, more_decisions) =
+                                step_system(bfg_state.clone(), event.clone());
+                            bfg_state = next_state;
 
-                        for d in more_decisions {
-                            events.push(handler.execute_decision(d).await.unwrap());
+                            for d in more_decisions {
+                                events.push_back(handler.execute_decision(d).await.unwrap());
+                            }
                         }
                     }
 
@@ -110,18 +115,20 @@ async fn main() -> Result<()> {
                     );
                     bfg_state = next_state;
 
-                    let mut events = Vec::new();
+                    let mut events = LinkedList::new();
                     for d in decisions {
-                        events.push(handler.execute_decision(d).await.unwrap());
+                        events.push_back(handler.execute_decision(d).await.unwrap());
                     }
                     // // A system step could result in more events
-                    while let Some(event) = events.iter().next().unwrap() {
-                        let (next_state, more_decisions) =
-                            step_system(bfg_state.clone(), event.clone());
-                        bfg_state = next_state;
+                    while let Some(maybe_event) = events.pop_front() {
+                        if let Some(event) = maybe_event {
+                            let (next_state, more_decisions) =
+                                step_system(bfg_state.clone(), event.clone());
+                            bfg_state = next_state;
 
-                        for d in more_decisions {
-                            events.push(handler.execute_decision(d).await.unwrap());
+                            for d in more_decisions {
+                                events.push_back(handler.execute_decision(d).await.unwrap());
+                            }
                         }
                     }
 
@@ -141,18 +148,20 @@ async fn main() -> Result<()> {
                     );
                     bfg_state = next_state;
 
-                    let mut events = Vec::new();
+                    let mut events = LinkedList::new();
                     for d in decisions {
-                        events.push(handler.execute_decision(d).await.unwrap());
+                        events.push_back(handler.execute_decision(d).await.unwrap());
                     }
                     // // A system step could result in more events
-                    while let Some(event) = events.iter().next().unwrap() {
-                        let (next_state, more_decisions) =
-                            step_system(bfg_state.clone(), event.clone());
-                        bfg_state = next_state;
+                    while let Some(maybe_event) = events.pop_front() {
+                        if let Some(event) = maybe_event {
+                            let (next_state, more_decisions) =
+                                step_system(bfg_state.clone(), event.clone());
+                            bfg_state = next_state;
 
-                        for d in more_decisions {
-                            events.push(handler.execute_decision(d).await.unwrap());
+                            for d in more_decisions {
+                                events.push_back(handler.execute_decision(d).await.unwrap());
+                            }
                         }
                     }
 
@@ -167,6 +176,7 @@ async fn main() -> Result<()> {
                     let mut a = app_bfg.write().await;
                     a.stream_status = data;
                 }
+                msg => info!("{:?}", msg),
             }
         }
     });
@@ -177,7 +187,7 @@ async fn main() -> Result<()> {
     select! {
         Ok(_) = trade_system => println!("COMPLETED Trade System"),
         Ok(_) = io => println!("COMPLETED IO"),
-        // Ok(_) = ui => println!("COMPLETED UI"),
+        Ok(_) = ui => println!("COMPLETED UI"),
     }
 
     Ok(())
