@@ -21,6 +21,10 @@ pub mod realtime;
 pub mod rest;
 
 #[derive(Debug, Clone)]
+pub enum BrokerageEvent {
+}
+
+#[derive(Debug, Clone)]
 pub enum RealtimeEvent {
     MarketEvent(MarketUpdate),
     AccountEvent(AccountUpdate),

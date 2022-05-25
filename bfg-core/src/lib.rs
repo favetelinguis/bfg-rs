@@ -14,6 +14,7 @@ use std::collections::HashMap;
 use std::str::FromStr;
 
 pub mod models;
+pub mod decider;
 
 // TODO make ig::realtime emit the following events insted, will make pattern matching much clearer
 #[derive(Clone, Debug)]

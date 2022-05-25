@@ -1,18 +1,11 @@
 [package]
-name = "bfg-rs"
+name = "bfg-ig"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[dev-dependencies]
-
 [dependencies]
-
-[workspace]
-members = [
-    "bfg-core",
-    "ig-brokerage-adapter",
-    "bfg-tui",
-    "bfg-ig"
-]
+bfg-core = { path = "../bfg-core"}
+ig-brokerage-adapter = { path = "../ig-brokerage-adapter"}
+tokio = { version = "1", features = ["full"] }
