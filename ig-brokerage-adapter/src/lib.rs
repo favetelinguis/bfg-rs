@@ -21,10 +21,6 @@ pub mod realtime;
 pub mod rest;
 
 #[derive(Debug, Clone)]
-pub enum BrokerageEvent {
-}
-
-#[derive(Debug, Clone)]
 pub enum RealtimeEvent {
     MarketEvent(MarketUpdate),
     AccountEvent(AccountUpdate),
@@ -68,7 +64,7 @@ impl ConnectionDetails {
 // TODO session should be an Option<Arc...> then use .expect in the states where it should always be set
 pub struct IgBrokerageApi {
     _session: Arc<Mutex<SessionState>>,
-    rest: IgRestClient<HasSession>,
+    pub rest: IgRestClient<HasSession>,
     _stream: IgStreamClient,
 }
 

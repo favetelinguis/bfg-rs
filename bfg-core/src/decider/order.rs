@@ -1,26 +1,40 @@
-use std::marker::PhantomData;
-use crate::decider::{Command, Event, OrderEvent};
+use std::borrow::Borrow;
+use chrono::{DateTime, Utc};
+use crate::decider::{Command, Event, OrderEvent, OrderReference};
+use crate::{DealStatus, Direction};
 
+#[derive(Debug)]
 pub struct WorkingOrderMachine<S> {
-    state: PhantomData<S>,
+    state: S,
 }
 
+#[derive(Debug)]
 pub struct AwaitingWOOpenConfirmation;
+#[derive(Debug)]
 pub struct WOOpenRejected;
-pub struct WOOpenAccepted;
-pub struct PositionOpened;
-pub struct AwaitingTrailingStopConfirmation;
-pub struct PositionTrailingStopRejected;
-pub struct PositionTrailingStopAccepted;
+#[derive(Debug)]
+pub struct WOOpenAccepted {pub wanted_entry_level: f64, reference: OrderReference, deal_id: String}
+#[derive(Debug)]
+pub struct PositionOpened {pub wanted_entry_level: f64, pub actual_entry_level: f64, pub entry_time: DateTime<Utc>, reference: OrderReference, deal_id: String}
+#[derive(Debug)]
+pub struct AwaitingTrailingStopConfirmation{pub wanted_entry_level: f64, pub actual_entry_level: f64, pub entry_time: DateTime<Utc>, reference: OrderReference, deal_id: String}
+#[derive(Debug)]
+pub struct PositionTrailingStopRejected{pub wanted_entry_level: f64, pub actual_entry_level: f64, pub entry_time: DateTime<Utc>, reference: OrderReference, deal_id: String}
+#[derive(Debug)]
+pub struct PositionTrailingStopAccepted{pub wanted_entry_level: f64, pub actual_entry_level: f64, pub entry_time: DateTime<Utc>, reference: OrderReference, deal_id: String}
+#[derive(Debug)]
 pub struct AwaitingWOCloseConfirmation;
+#[derive(Debug)]
 pub struct WOCloseRejected;
+#[derive(Debug)]
 pub struct WOCloseAccepted;
-pub struct PositionExited;
+#[derive(Debug)]
+pub struct PositionExited{pub wanted_entry_level: f64, pub actual_entry_level: f64,pub entry_time: DateTime<Utc>,pub exit_time: DateTime<Utc>, pub exit_level: f64, reference: OrderReference, deal_id: String}
 
 impl From<WorkingOrderMachine<AwaitingWOOpenConfirmation>> for WorkingOrderMachine<WOOpenAccepted> {
     fn from(_: WorkingOrderMachine<AwaitingWOOpenConfirmation>) -> Self {
         Self {
-            state: PhantomData,
+            state: WOOpenAccepted {wanted_entry_level: Default::default(), reference: OrderReference::BETWEEN_LONG, deal_id: Default::default()},
         }
     }
 }
@@ -28,47 +42,111 @@ impl From<WorkingOrderMachine<AwaitingWOOpenConfirmation>> for WorkingOrderMachi
 impl From<WorkingOrderMachine<AwaitingWOOpenConfirmation>> for WorkingOrderMachine<WOOpenRejected> {
     fn from(_: WorkingOrderMachine<AwaitingWOOpenConfirmation>) -> Self {
         Self {
-            state: PhantomData,
+            state: WOOpenRejected,
         }
     }
 }
 
 impl From<WorkingOrderMachine<WOOpenAccepted>> for WorkingOrderMachine<PositionOpened> {
-    fn from(_: WorkingOrderMachine<WOOpenAccepted>) -> Self {
+    fn from(val: WorkingOrderMachine<WOOpenAccepted>) -> Self {
         Self {
-            state: PhantomData,
+            state: PositionOpened {
+                wanted_entry_level: val.state.wanted_entry_level,
+                actual_entry_level: Default::default(),
+                entry_time: Utc::now(),
+                reference: val.state.reference,
+                deal_id: val.state.deal_id,
+            },
         }
     }
 }
 
 impl From<WorkingOrderMachine<PositionOpened>> for WorkingOrderMachine<AwaitingTrailingStopConfirmation> {
-    fn from(_: WorkingOrderMachine<PositionOpened>) -> Self {
+    fn from(val: WorkingOrderMachine<PositionOpened>) -> Self {
         Self {
-            state: PhantomData,
+            state: AwaitingTrailingStopConfirmation {
+                wanted_entry_level: val.state.wanted_entry_level,
+                actual_entry_level: val.state.actual_entry_level,
+                entry_time: val.state.entry_time,
+                reference: val.state.reference,
+                deal_id: val.state.deal_id,
+            },
         }
     }
 }
 
 impl From<WorkingOrderMachine<AwaitingTrailingStopConfirmation>> for WorkingOrderMachine<PositionTrailingStopAccepted> {
-    fn from(_: WorkingOrderMachine<AwaitingTrailingStopConfirmation>) -> Self {
+    fn from(val: WorkingOrderMachine<AwaitingTrailingStopConfirmation>) -> Self {
         Self {
-            state: PhantomData,
+            state: PositionTrailingStopAccepted {
+                wanted_entry_level: val.state.wanted_entry_level,
+                actual_entry_level: val.state.actual_entry_level,
+                entry_time: val.state.entry_time,
+                reference: val.state.reference,
+                deal_id: val.state.deal_id,
+            },
         }
     }
 }
 
 impl From<WorkingOrderMachine<AwaitingTrailingStopConfirmation>> for WorkingOrderMachine<PositionTrailingStopRejected> {
-    fn from(_: WorkingOrderMachine<AwaitingTrailingStopConfirmation>) -> Self {
+    fn from(val: WorkingOrderMachine<AwaitingTrailingStopConfirmation>) -> Self {
         Self {
-            state: PhantomData,
+            state: PositionTrailingStopRejected {
+                wanted_entry_level: val.state.wanted_entry_level,
+                actual_entry_level: val.state.actual_entry_level,
+                entry_time: val.state.entry_time,
+                reference: val.state.reference,
+                deal_id: val.state.deal_id,
+            },
+        }
+    }
+}
+
+impl From<WorkingOrderMachine<AwaitingTrailingStopConfirmation>> for WorkingOrderMachine<PositionExited> {
+    fn from(val: WorkingOrderMachine<AwaitingTrailingStopConfirmation>) -> Self {
+        Self {
+            state: PositionExited {
+                wanted_entry_level: val.state.wanted_entry_level,
+                actual_entry_level: val.state.actual_entry_level,
+                entry_time: val.state.entry_time,
+                exit_time: Utc::now(),
+                exit_level: Default::default(),
+                reference: val.state.reference,
+                deal_id: val.state.deal_id,
+            },
         }
     }
 }
 
 impl From<WorkingOrderMachine<PositionTrailingStopAccepted>> for WorkingOrderMachine<PositionExited> {
-    fn from(_: WorkingOrderMachine<PositionTrailingStopAccepted>) -> Self {
+    fn from(val: WorkingOrderMachine<PositionTrailingStopAccepted>) -> Self {
         Self {
-            state: PhantomData,
+            state: PositionExited {
+                wanted_entry_level: val.state.wanted_entry_level,
+                actual_entry_level: val.state.actual_entry_level,
+                entry_time: val.state.entry_time,
+                exit_time: Utc::now(),
+                exit_level: Default::default(),
+                reference: val.state.reference,
+                deal_id: val.state.deal_id,
+            },
+        }
+    }
+}
+
+impl From<WorkingOrderMachine<PositionOpened>> for WorkingOrderMachine<PositionExited> {
+    fn from(val: WorkingOrderMachine<PositionOpened>) -> Self {
+        Self {
+            state: PositionExited {
+                wanted_entry_level: val.state.wanted_entry_level,
+                actual_entry_level: val.state.actual_entry_level,
+                entry_time: val.state.entry_time,
+                exit_time: Utc::now(),
+                exit_level: Default::default(),
+                reference: val.state.reference,
+                deal_id: val.state.deal_id,
+            },
         }
     }
 }
@@ -76,21 +154,21 @@ impl From<WorkingOrderMachine<PositionTrailingStopAccepted>> for WorkingOrderMac
 impl From<WorkingOrderMachine<WOOpenAccepted>> for WorkingOrderMachine<AwaitingWOCloseConfirmation> {
     fn from(_: WorkingOrderMachine<WOOpenAccepted>) -> Self {
         Self {
-            state: PhantomData,
+            state: AwaitingWOCloseConfirmation,
         }
     }
 }
-impl From<WorkingOrderMachine<AwaitingWOCloseConfirmation>> for WorkingOrderMachine<WOCloseAccepted> {
-    fn from(_: WorkingOrderMachine<AwaitingWOCloseConfirmation>) -> Self {
+impl From<WorkingOrderMachine<PositionOpened>> for WorkingOrderMachine<WOCloseAccepted> {
+    fn from(_: WorkingOrderMachine<PositionOpened>) -> Self {
         Self {
-            state: PhantomData,
+            state: WOCloseAccepted,
         }
     }
 }
-impl From<WorkingOrderMachine<AwaitingWOCloseConfirmation>> for WorkingOrderMachine<WOCloseRejected> {
-    fn from(_: WorkingOrderMachine<AwaitingWOCloseConfirmation>) -> Self {
+impl From<WorkingOrderMachine<PositionOpened>> for WorkingOrderMachine<WOCloseRejected> {
+    fn from(_: WorkingOrderMachine<PositionOpened>) -> Self {
         Self {
-            state: PhantomData,
+            state: WOCloseRejected,
         }
     }
 }
@@ -99,11 +177,12 @@ impl From<WorkingOrderMachine<AwaitingWOCloseConfirmation>> for WorkingOrderMach
 impl WorkingOrderMachine<AwaitingWOOpenConfirmation> {
     fn new() -> Self {
         Self {
-            state: PhantomData,
+            state: AwaitingWOOpenConfirmation,
         }
     }
 }
 
+#[derive(Debug)]
 pub enum WorkingOrder {
     AwaitingWOOpenConfirmation(WorkingOrderMachine<AwaitingWOOpenConfirmation>),
     WOOpenRejected(WorkingOrderMachine<WOOpenRejected>),
@@ -112,7 +191,6 @@ pub enum WorkingOrder {
     AwaitingTrailingStopConfirmation(WorkingOrderMachine<AwaitingTrailingStopConfirmation>),
     PositionTrailingStopRejected(WorkingOrderMachine<PositionTrailingStopRejected>),
     PositionTrailingStopAccepted(WorkingOrderMachine<PositionTrailingStopAccepted>),
-    AwaitingWOCloseConfirmation(WorkingOrderMachine<AwaitingWOCloseConfirmation>),
     WOCloseRejected(WorkingOrderMachine<WOCloseRejected>),
     WOCloseAccepted(WorkingOrderMachine<WOCloseAccepted>),
     PositionExited(WorkingOrderMachine<PositionExited>),
@@ -121,12 +199,109 @@ pub enum WorkingOrder {
 impl WorkingOrder {
     pub fn step(self, event: &Event) -> (Self, Vec<Command>) {
         match (self, event) {
-            (WorkingOrder::AwaitingWOOpenConfirmation(val), Event::Order(OrderEvent::ConfirmationOpenAccepted, _)) => {
-                (WorkingOrder::WOOpenAccepted(val.into()), vec![])
+            (WorkingOrder::AwaitingWOOpenConfirmation(val), Event::Order(OrderEvent::ConfirmationOpenAccepted {level, deal_id}, reference)) => {
+                let mut new_state: WorkingOrderMachine<WOOpenAccepted> = val.into();
+                new_state.state.wanted_entry_level = level.clone();
+                new_state.state.reference = reference.clone();
+                new_state.state.deal_id = deal_id.clone();
+                (WorkingOrder::WOOpenAccepted(new_state), vec![])
             },
-            // TODO fillout with rest???
+            (WorkingOrder::AwaitingWOOpenConfirmation(val), Event::Order(OrderEvent::ConfirmationOpenRejected,_)) => {
+                (WorkingOrder::WOOpenRejected(val.into()), vec![])
+            },
+            (WorkingOrder::WOOpenAccepted(val), Event::Order(OrderEvent::PositionOpen {entry_level}, OrderReference::OVER_LONG | OrderReference::UNDER_SHORT)) => {
+                let mut new_state: WorkingOrderMachine<PositionOpened> = val.into();
+                new_state.state.actual_entry_level = entry_level.clone();
+                (WorkingOrder::PositionOpened(new_state), vec![])
+            },
+            (WorkingOrder::WOOpenAccepted(val), Event::Order(OrderEvent::PositionOpen {entry_level}, OrderReference::BETWEEN_SHORT)) => {
+                let mut new_state: WorkingOrderMachine<PositionOpened> = val.into();
+                new_state.state.actual_entry_level = entry_level.clone();
+                (WorkingOrder::PositionOpened(new_state), vec![Command::CancelWorkingOrder {reference_to_cancel: OrderReference::BETWEEN_LONG}])
+            },
+            (WorkingOrder::WOOpenAccepted(val), Event::Order(OrderEvent::PositionOpen {entry_level}, OrderReference::BETWEEN_LONG)) => {
+                let mut new_state: WorkingOrderMachine<PositionOpened> = val.into();
+                new_state.state.actual_entry_level = entry_level.clone();
+                (WorkingOrder::PositionOpened(new_state), vec![Command::CancelWorkingOrder {reference_to_cancel: OrderReference::BETWEEN_SHORT}])
+            },
+            (WorkingOrder::PositionOpened(val), Event::Order(OrderEvent::ConfirmationCloseAccepted, _)) => {
+                (WorkingOrder::WOCloseAccepted(val.into()), vec![])
+            },
+            (WorkingOrder::PositionOpened(val), Event::Order(OrderEvent::ConfirmationCloseRejected, _)) => {
+                (WorkingOrder::WOCloseRejected(val.into()), vec![])
+            },
+            (WorkingOrder::PositionOpened(val), Event::Market{bid, ask, ..}) if is_add_trailing_stop_triggered(bid, ask, val.state.reference.borrow(), val.state.actual_entry_level) => {
+                let stop_distance;
+                if let OrderReference::OVER_LONG | OrderReference::BETWEEN_LONG = val.state.reference.clone() {
+                    stop_distance = 5.;
+                } else {
+                    stop_distance = -5.;
+                }
+                let command = Command::UpdatePosition {
+                    level: val.state.actual_entry_level + stop_distance,
+                    deal_id: val.state.deal_id.clone(),
+                };
+                (WorkingOrder::AwaitingTrailingStopConfirmation(val.into()), vec![command])
+            },
+            (WorkingOrder::AwaitingTrailingStopConfirmation(val), Event::Order(OrderEvent::ConfirmationAmendedAccepted, _)) => {
+                (WorkingOrder::PositionTrailingStopAccepted(val.into()), vec![])
+            },
+            (WorkingOrder::AwaitingTrailingStopConfirmation(val), Event::Order(OrderEvent::ConfirmationAmendedRejected, _)) => {
+                (WorkingOrder::PositionTrailingStopRejected(val.into()), vec![])
+            },
+            // If position is closed while waiting to order to update
+            (WorkingOrder::AwaitingTrailingStopConfirmation(val), Event::Order(OrderEvent::PositionClose {exit_level}, _)) => {
+                let mut new_state: WorkingOrderMachine<PositionExited> = val.into();
+                new_state.state.exit_level = exit_level.clone();
+
+                let command = Command::PublishTradeResults {
+                    wanted_entry_level: new_state.state.wanted_entry_level,
+                    actual_entry_level: new_state.state.actual_entry_level,
+                    entry_time: new_state.state.entry_time.clone(),
+                    exit_time: new_state.state.exit_time.clone(),
+                    exit_level: new_state.state.exit_level,
+                    reference: new_state.state.reference.clone(),
+                };
+                (WorkingOrder::PositionExited(new_state), vec![command])
+            },
+            // If position with trailing stop
+            (WorkingOrder::PositionTrailingStopAccepted(val), Event::Order(OrderEvent::PositionClose {exit_level}, _)) => {
+                let mut new_state: WorkingOrderMachine<PositionExited> = val.into();
+                new_state.state.exit_level = exit_level.clone();
+                let command = Command::PublishTradeResults {
+                    wanted_entry_level: new_state.state.wanted_entry_level,
+                    actual_entry_level: new_state.state.actual_entry_level,
+                    entry_time: new_state.state.entry_time.clone(),
+                    exit_time: new_state.state.exit_time.clone(),
+                    exit_level: new_state.state.exit_level,
+                    reference: new_state.state.reference.clone(),
+                };
+                (WorkingOrder::PositionExited(new_state), vec![command])
+            },
+            // Position is cloded before updating with trailing stop
+            (WorkingOrder::PositionOpened(val), Event::Order(OrderEvent::PositionClose {exit_level}, _)) => {
+                let mut new_state: WorkingOrderMachine<PositionExited> = val.into();
+                new_state.state.exit_level = exit_level.clone();
+                let command = Command::PublishTradeResults {
+                    wanted_entry_level: new_state.state.wanted_entry_level,
+                    actual_entry_level: new_state.state.actual_entry_level,
+                    entry_time: new_state.state.entry_time.clone(),
+                    exit_time: new_state.state.exit_time.clone(),
+                    exit_level: new_state.state.exit_level,
+                    reference: new_state.state.reference.clone(),
+                };
+                (WorkingOrder::PositionExited(new_state), vec![command])
+            },
             (val, _) => (val, vec![])
         }
+    }
+}
+
+fn is_add_trailing_stop_triggered(bid: &f64, ask: &f64, reference: &OrderReference, level: f64) -> bool {
+    if let OrderReference::BETWEEN_LONG | OrderReference::OVER_LONG = reference {
+        bid.clone() > level
+    } else {
+        ask.clone() < level
     }
 }
 
@@ -136,39 +311,4 @@ impl WorkingOrderFactory {
     pub fn new() -> WorkingOrder {
              WorkingOrder::AwaitingWOOpenConfirmation(WorkingOrderMachine::new())
     }
-}
-
-
-
-// Alternative test
-pub struct AMachine<S> {
-    state: PhantomData<S>,
-}
-
-pub struct S1;
-pub struct S2;
-pub struct S3;
-
-pub struct A1;
-pub struct A2;
-pub struct A3;
-
-trait Transition<S, A> {
-    fn transition(state: S, action: A) -> Self;
-}
-
-impl Transition<AMachine<S1>, A1> for AMachine<S2> {
-    fn transition(state: AMachine<S1>, action: A1) -> Self { // Do we need a result, should we also return Command?
-        // Do logic
-        Self {
-            state: PhantomData,
-        }
-    }
-}
-
-// Make enum wrapper to make nice types for channels etc to send any action
-pub enum ActionWrapper {
-    A1(A1),
-    A2(A2),
-    A3(A3),
 }
