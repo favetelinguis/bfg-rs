@@ -209,25 +209,25 @@ impl WorkingOrder {
             (WorkingOrder::AwaitingWOOpenConfirmation(val), Event::Order(OrderEvent::ConfirmationOpenRejected,_)) => {
                 (WorkingOrder::WOOpenRejected(val.into()), vec![])
             },
-            (WorkingOrder::WOOpenAccepted(val), Event::Order(OrderEvent::PositionOpen {entry_level}, OrderReference::OVER_LONG | OrderReference::UNDER_SHORT)) => {
+            (WorkingOrder::WOOpenAccepted(val), Event::Order(OrderEvent::PositionEntry {entry_level}, OrderReference::OVER_LONG | OrderReference::UNDER_SHORT)) => {
                 let mut new_state: WorkingOrderMachine<PositionOpened> = val.into();
                 new_state.state.actual_entry_level = entry_level.clone();
                 (WorkingOrder::PositionOpened(new_state), vec![])
             },
-            (WorkingOrder::WOOpenAccepted(val), Event::Order(OrderEvent::PositionOpen {entry_level}, OrderReference::BETWEEN_SHORT)) => {
+            (WorkingOrder::WOOpenAccepted(val), Event::Order(OrderEvent::PositionEntry {entry_level}, OrderReference::BETWEEN_SHORT)) => {
                 let mut new_state: WorkingOrderMachine<PositionOpened> = val.into();
                 new_state.state.actual_entry_level = entry_level.clone();
                 (WorkingOrder::PositionOpened(new_state), vec![Command::CancelWorkingOrder {reference_to_cancel: OrderReference::BETWEEN_LONG}])
             },
-            (WorkingOrder::WOOpenAccepted(val), Event::Order(OrderEvent::PositionOpen {entry_level}, OrderReference::BETWEEN_LONG)) => {
+            (WorkingOrder::WOOpenAccepted(val), Event::Order(OrderEvent::PositionEntry {entry_level}, OrderReference::BETWEEN_LONG)) => {
                 let mut new_state: WorkingOrderMachine<PositionOpened> = val.into();
                 new_state.state.actual_entry_level = entry_level.clone();
                 (WorkingOrder::PositionOpened(new_state), vec![Command::CancelWorkingOrder {reference_to_cancel: OrderReference::BETWEEN_SHORT}])
             },
-            (WorkingOrder::PositionOpened(val), Event::Order(OrderEvent::ConfirmationCloseAccepted, _)) => {
+            (WorkingOrder::PositionOpened(val), Event::Order(OrderEvent::ConfirmationDeleteAccepted, _)) => {
                 (WorkingOrder::WOCloseAccepted(val.into()), vec![])
             },
-            (WorkingOrder::PositionOpened(val), Event::Order(OrderEvent::ConfirmationCloseRejected, _)) => {
+            (WorkingOrder::PositionOpened(val), Event::Order(OrderEvent::ConfirmationDeleteRejected, _)) => {
                 (WorkingOrder::WOCloseRejected(val.into()), vec![])
             },
             (WorkingOrder::PositionOpened(val), Event::Market{bid, ask, ..}) if is_add_trailing_stop_triggered(bid, ask, val.state.reference.borrow(), val.state.actual_entry_level) => {
@@ -250,7 +250,7 @@ impl WorkingOrder {
                 (WorkingOrder::PositionTrailingStopRejected(val.into()), vec![])
             },
             // If position is closed while waiting to order to update
-            (WorkingOrder::AwaitingTrailingStopConfirmation(val), Event::Order(OrderEvent::PositionClose {exit_level}, _)) => {
+            (WorkingOrder::AwaitingTrailingStopConfirmation(val), Event::Order(OrderEvent::PositionExit {exit_level}, _)) => {
                 let mut new_state: WorkingOrderMachine<PositionExited> = val.into();
                 new_state.state.exit_level = exit_level.clone();
 
@@ -265,7 +265,7 @@ impl WorkingOrder {
                 (WorkingOrder::PositionExited(new_state), vec![command])
             },
             // If position with trailing stop
-            (WorkingOrder::PositionTrailingStopAccepted(val), Event::Order(OrderEvent::PositionClose {exit_level}, _)) => {
+            (WorkingOrder::PositionTrailingStopAccepted(val), Event::Order(OrderEvent::PositionExit {exit_level}, _)) => {
                 let mut new_state: WorkingOrderMachine<PositionExited> = val.into();
                 new_state.state.exit_level = exit_level.clone();
                 let command = Command::PublishTradeResults {
@@ -279,7 +279,7 @@ impl WorkingOrder {
                 (WorkingOrder::PositionExited(new_state), vec![command])
             },
             // Position is cloded before updating with trailing stop
-            (WorkingOrder::PositionOpened(val), Event::Order(OrderEvent::PositionClose {exit_level}, _)) => {
+            (WorkingOrder::PositionOpened(val), Event::Order(OrderEvent::PositionExit {exit_level}, _)) => {
                 let mut new_state: WorkingOrderMachine<PositionExited> = val.into();
                 new_state.state.exit_level = exit_level.clone();
                 let command = Command::PublishTradeResults {

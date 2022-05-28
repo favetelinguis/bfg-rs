@@ -4,7 +4,7 @@ use crate::models::{
     BfgTradeStatus, ConfirmsStatus, DataUpdate, DealStatus, Decision, Direction, EntryMode,
     FetchDataDetails, LimitOrderDetails, MarketOrderDetails, MarketState, MarketUpdate, OrderState,
     PriceRelativeOr, SystemState, SystemValues, TradeConfirmation, TradeUpdate,
-    WorkingOrderDetails, WorkingOrderPlacement, WorkingOrderReference, WorkingOrderSystemDetails,
+    WorkingOrderDetails, WorkingOrderPlacement, OrderReference, WorkingOrderSystemDetails,
     WorkingOrderUpdate,
 };
 use chrono::{NaiveDateTime, NaiveTime, Utc};
@@ -19,15 +19,15 @@ pub mod decider;
 // TODO make ig::realtime emit the following events insted, will make pattern matching much clearer
 #[derive(Clone, Debug)]
 pub enum BfgEventV2 {
-    ConfirmationOpenAccepted {deal_id: String, deal_reference: WorkingOrderReference, level: f64},
-    ConfirmationOpenRejected {deal_reference: WorkingOrderReference, reason: String},
-    ConfirmationCloseAccepted {deal_reference: WorkingOrderReference},
-    ConfirmationCloseRejected {deal_reference: WorkingOrderReference, reason: String},
-    ConfirmationAmendedAccepted {deal_reference: WorkingOrderReference, level: f64},
-    ConfirmationAmendedRejected {deal_reference: WorkingOrderReference, reason: String},
-    PositionUpdateOpen {deal_reference: WorkingOrderReference, level: f64},
-    PositionUpdateDelete {deal_reference: WorkingOrderReference, level: f64},
-    ClosedTrade {wanted_entry: f64, actual_entry: f64, epic: String, mfe: f64, exit: f64, direction: Direction, trade_type: WorkingOrderReference, entry_time: Utc, exit_time: Utc}, // Also need to add a Decision
+    ConfirmationOpenAccepted {deal_id: String, deal_reference: OrderReference, level: f64},
+    ConfirmationOpenRejected {deal_reference: OrderReference, reason: String},
+    ConfirmationCloseAccepted {deal_reference: OrderReference },
+    ConfirmationCloseRejected {deal_reference: OrderReference, reason: String},
+    ConfirmationAmendedAccepted {deal_reference: OrderReference, level: f64},
+    ConfirmationAmendedRejected {deal_reference: OrderReference, reason: String},
+    PositionUpdateOpen {deal_reference: OrderReference, level: f64},
+    PositionUpdateDelete {deal_reference: OrderReference, level: f64},
+    ClosedTrade {wanted_entry: f64, actual_entry: f64, epic: String, mfe: f64, exit: f64, direction: Direction, trade_type: OrderReference, entry_time: Utc, exit_time: Utc}, // Also need to add a Decision
     Market {state: MarketState, ask: f64, bid: f64},
     Data {},
 }
@@ -120,7 +120,7 @@ pub fn step_system(mut state: SystemState, action: BfgEvent) -> (SystemState, Ve
                             vec![Decision::CreateWorkingOrder(WorkingOrderDetails {
                                 direction: Direction::BUY,
                                 price: system_values.or_high_ask,
-                                reference: WorkingOrderReference::OVER_LONG,
+                                reference: OrderReference::OVER_LONG,
                             })]
                         }
                         WorkingOrderPlacement::Between => {
@@ -135,12 +135,12 @@ pub fn step_system(mut state: SystemState, action: BfgEvent) -> (SystemState, Ve
                             let wo1 = Decision::CreateWorkingOrder(WorkingOrderDetails {
                                 direction: Direction::BUY,
                                 price: system_values.or_low_ask,
-                                reference: WorkingOrderReference::BETWEEN_LONG,
+                                reference: OrderReference::BETWEEN_LONG,
                             });
                             let wo2 = Decision::CreateWorkingOrder(WorkingOrderDetails {
                                 direction: Direction::SELL,
                                 price: system_values.or_high_bid,
-                                reference: WorkingOrderReference::BETWEEN_SHORT,
+                                reference: OrderReference::BETWEEN_SHORT,
                             });
                             vec![wo1, wo2]
                         }
@@ -154,7 +154,7 @@ pub fn step_system(mut state: SystemState, action: BfgEvent) -> (SystemState, Ve
                             vec![Decision::CreateWorkingOrder(WorkingOrderDetails {
                                 direction: Direction::SELL,
                                 price: system_values.or_low_bid,
-                                reference: WorkingOrderReference::UNDER_SHORT,
+                                reference: OrderReference::UNDER_SHORT,
                             })]
                         }
                     };
@@ -179,7 +179,7 @@ pub fn step_system(mut state: SystemState, action: BfgEvent) -> (SystemState, Ve
                 working_orders: (_, Some(OrderState::AwaitingWorkingOrderCreateConfirmation(_))), ..
             }),
             BfgEvent::TradeConfirmation(TradeConfirmation {
-                                            deal_reference: WorkingOrderReference::BETWEEN_SHORT | WorkingOrderReference::UNDER_SHORT,
+                                            deal_reference: OrderReference::BETWEEN_SHORT | OrderReference::UNDER_SHORT,
                                             deal_id,
                                             deal_status: DealStatus::ACCEPTED,
                                             status: Some(ConfirmsStatus::OPEN),
@@ -199,7 +199,7 @@ pub fn step_system(mut state: SystemState, action: BfgEvent) -> (SystemState, Ve
                 working_orders: (_, Some(OrderState::AwaitingWorkingOrderCreateConfirmation(_))), ..
             }),
             BfgEvent::TradeConfirmation(TradeConfirmation {
-                                            deal_reference: WorkingOrderReference::BETWEEN_SHORT | WorkingOrderReference::UNDER_SHORT,
+                                            deal_reference: OrderReference::BETWEEN_SHORT | OrderReference::UNDER_SHORT,
                                             deal_id,
                                             deal_status: DealStatus::REJECTED,
                                             status: Some(ConfirmsStatus::OPEN),
@@ -219,7 +219,7 @@ pub fn step_system(mut state: SystemState, action: BfgEvent) -> (SystemState, Ve
                 working_orders: (Some(OrderState::AwaitingWorkingOrderCreateConfirmation(_)), _), ..
             }),
             BfgEvent::TradeConfirmation(TradeConfirmation {
-                                            deal_reference: WorkingOrderReference::BETWEEN_LONG | WorkingOrderReference::OVER_LONG,
+                                            deal_reference: OrderReference::BETWEEN_LONG | OrderReference::OVER_LONG,
                                             deal_id,
                                             deal_status: DealStatus::ACCEPTED,
                                             status: Some(ConfirmsStatus::OPEN),
@@ -239,7 +239,7 @@ pub fn step_system(mut state: SystemState, action: BfgEvent) -> (SystemState, Ve
                 working_orders: (Some(OrderState::AwaitingWorkingOrderCreateConfirmation(_)), _), ..
             }),
             BfgEvent::TradeConfirmation(TradeConfirmation {
-                                            deal_reference: WorkingOrderReference::BETWEEN_LONG | WorkingOrderReference::OVER_LONG,
+                                            deal_reference: OrderReference::BETWEEN_LONG | OrderReference::OVER_LONG,
                                             deal_id,
                                             deal_status: DealStatus::REJECTED,
                                             status: Some(ConfirmsStatus::OPEN),
@@ -262,7 +262,7 @@ pub fn step_system(mut state: SystemState, action: BfgEvent) -> (SystemState, Ve
                 },
             ),
             BfgEvent::TradeConfirmation(TradeConfirmation {
-                                            deal_reference: WorkingOrderReference::BETWEEN_LONG,
+                                            deal_reference: OrderReference::BETWEEN_LONG,
                                             deal_id,
                                             deal_status: DealStatus::ACCEPTED,
                                             status: Some(ConfirmsStatus::DELETED),
@@ -285,7 +285,7 @@ pub fn step_system(mut state: SystemState, action: BfgEvent) -> (SystemState, Ve
                 },
             ),
             BfgEvent::TradeConfirmation(TradeConfirmation {
-                                            deal_reference: WorkingOrderReference::BETWEEN_SHORT,
+                                            deal_reference: OrderReference::BETWEEN_SHORT,
                                             deal_id,
                                             deal_status: DealStatus::ACCEPTED,
                                             status: Some(ConfirmsStatus::DELETED),
@@ -310,7 +310,7 @@ pub fn step_system(mut state: SystemState, action: BfgEvent) -> (SystemState, Ve
             ),
             BfgEvent::TradeConfirmation(TradeConfirmation {
                                             deal_reference:
-                                            WorkingOrderReference::OVER_LONG | WorkingOrderReference::BETWEEN_LONG,
+                                            OrderReference::OVER_LONG | OrderReference::BETWEEN_LONG,
                                             deal_id,
                                             deal_status: DealStatus::ACCEPTED,
                                             status: Some(ConfirmsStatus::AMENDED),
@@ -335,7 +335,7 @@ pub fn step_system(mut state: SystemState, action: BfgEvent) -> (SystemState, Ve
             ),
             BfgEvent::TradeConfirmation(TradeConfirmation {
                                             deal_reference:
-                                            WorkingOrderReference::UNDER_SHORT | WorkingOrderReference::BETWEEN_SHORT,
+                                            OrderReference::UNDER_SHORT | OrderReference::BETWEEN_SHORT,
                                             deal_id,
                                             deal_status: DealStatus::ACCEPTED,
                                             status: Some(ConfirmsStatus::AMENDED),
@@ -361,7 +361,7 @@ pub fn step_system(mut state: SystemState, action: BfgEvent) -> (SystemState, Ve
                 },
             ),
             BfgEvent::Trade(TradeUpdate {
-                                deal_reference: WorkingOrderReference::BETWEEN_SHORT,
+                                deal_reference: OrderReference::BETWEEN_SHORT,
                                 deal_id,
                                 deal_status: DealStatus::ACCEPTED,
                                 status: BfgTradeStatus::OPEN,
@@ -395,7 +395,7 @@ pub fn step_system(mut state: SystemState, action: BfgEvent) -> (SystemState, Ve
                 },
             ),
             BfgEvent::Trade(TradeUpdate {
-                                deal_reference: WorkingOrderReference::UNDER_SHORT,
+                                deal_reference: OrderReference::UNDER_SHORT,
                                 deal_id,
                                 deal_status: DealStatus::ACCEPTED,
                                 status: BfgTradeStatus::OPEN,
@@ -418,7 +418,7 @@ pub fn step_system(mut state: SystemState, action: BfgEvent) -> (SystemState, Ve
                 },
             ),
             BfgEvent::Trade(TradeUpdate {
-                                deal_reference: WorkingOrderReference::BETWEEN_LONG,
+                                deal_reference: OrderReference::BETWEEN_LONG,
                                 deal_id,
                                 deal_status: DealStatus::ACCEPTED,
                                 status: BfgTradeStatus::OPEN,
@@ -452,7 +452,7 @@ pub fn step_system(mut state: SystemState, action: BfgEvent) -> (SystemState, Ve
                 },
             ),
             BfgEvent::Trade(TradeUpdate {
-                                deal_reference: WorkingOrderReference::OVER_LONG,
+                                deal_reference: OrderReference::OVER_LONG,
                                 deal_id,
                                 deal_status: DealStatus::ACCEPTED,
                                 status: BfgTradeStatus::OPEN,
@@ -475,7 +475,7 @@ pub fn step_system(mut state: SystemState, action: BfgEvent) -> (SystemState, Ve
             ),
             BfgEvent::Trade(TradeUpdate {
                                 deal_reference:
-                                WorkingOrderReference::OVER_LONG | WorkingOrderReference::BETWEEN_LONG,
+                                OrderReference::OVER_LONG | OrderReference::BETWEEN_LONG,
                                 deal_id,
                                 deal_status: DealStatus::ACCEPTED,
                                 status: BfgTradeStatus::DELETED,
@@ -498,7 +498,7 @@ pub fn step_system(mut state: SystemState, action: BfgEvent) -> (SystemState, Ve
             ),
             BfgEvent::Trade(TradeUpdate {
                                 deal_reference:
-                                WorkingOrderReference::UNDER_SHORT | WorkingOrderReference::BETWEEN_SHORT,
+                                OrderReference::UNDER_SHORT | OrderReference::BETWEEN_SHORT,
                                 deal_id,
                                 deal_status: DealStatus::ACCEPTED,
                                 status: BfgTradeStatus::DELETED,
@@ -651,7 +651,7 @@ mod tests {
         match decisions[..] {
             [Decision::CreateWorkingOrder(WorkingOrderDetails {
                 direction: Direction::BUY,
-                reference: WorkingOrderReference::OVER_LONG,
+                reference: OrderReference::OVER_LONG,
                 ..
             })] => {}
             _ => panic!("Wrong decision"),
@@ -678,11 +678,11 @@ mod tests {
         match decisions[..] {
             [Decision::CreateWorkingOrder(WorkingOrderDetails {
                 direction: Direction::BUY,
-                reference: WorkingOrderReference::BETWEEN_LONG,
+                reference: OrderReference::BETWEEN_LONG,
                 ..
             }), Decision::CreateWorkingOrder(WorkingOrderDetails {
                 direction: Direction::SELL,
-                reference: WorkingOrderReference::BETWEEN_SHORT,
+                reference: OrderReference::BETWEEN_SHORT,
                 ..
             })] => {}
             _ => panic!("Wrong decision"),
@@ -704,7 +704,7 @@ mod tests {
         match decisions[..] {
             [Decision::CreateWorkingOrder(WorkingOrderDetails {
                 direction: Direction::SELL,
-                reference: WorkingOrderReference::UNDER_SHORT,
+                reference: OrderReference::UNDER_SHORT,
                 ..
             })] => {}
             _ => panic!("Wrong decision"),
@@ -728,7 +728,7 @@ mod tests {
         let action = confirms(
             ConfirmsStatus::OPEN,
             DealStatus::ACCEPTED,
-            WorkingOrderReference::UNDER_SHORT,
+            OrderReference::UNDER_SHORT,
         );
         let (result_state, decisions) = step_system(state, action);
         match result_state {
@@ -750,7 +750,7 @@ mod tests {
         let action = confirms(
             ConfirmsStatus::AMENDED,
             DealStatus::ACCEPTED,
-            WorkingOrderReference::UNDER_SHORT,
+            OrderReference::UNDER_SHORT,
         );
         let (result_state, decisions) = step_system(state, action);
         match result_state {
@@ -772,7 +772,7 @@ mod tests {
         let action = opu(
             BfgTradeStatus::DELETED,
             DealStatus::ACCEPTED,
-            WorkingOrderReference::UNDER_SHORT,
+            OrderReference::UNDER_SHORT,
         );
         let (result_state, decisions) = step_system(state, action);
         match result_state {
@@ -797,7 +797,7 @@ mod tests {
         let action = confirms(
             ConfirmsStatus::OPEN,
             DealStatus::ACCEPTED,
-            WorkingOrderReference::OVER_LONG,
+            OrderReference::OVER_LONG,
         );
         let (result_state, decisions) = step_system(state, action);
         match result_state {
@@ -837,7 +837,7 @@ mod tests {
     fn opu(
         status: BfgTradeStatus,
         deal_status: DealStatus,
-        deal_reference: WorkingOrderReference,
+        deal_reference: OrderReference,
     ) -> BfgEvent {
         BfgEvent::Trade(TradeUpdate {
             deal_status,
@@ -850,7 +850,7 @@ mod tests {
     fn confirms(
         status: ConfirmsStatus,
         deal_status: DealStatus,
-        deal_reference: WorkingOrderReference,
+        deal_reference: OrderReference,
     ) -> BfgEvent {
         BfgEvent::TradeConfirmation(TradeConfirmation {
             deal_status,

@@ -135,7 +135,7 @@ pub struct TradeUpdate {
     pub deal_status: DealStatus,
     pub status: BfgTradeStatus,
     pub deal_id: String,
-    pub deal_reference: WorkingOrderReference,
+    pub deal_reference: OrderReference,
 }
 
 #[derive(Debug, Clone)]
@@ -164,15 +164,15 @@ impl FromStr for MarketState {
     }
 }
 
-impl FromStr for WorkingOrderReference {
+impl FromStr for OrderReference {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "OVER_LONG" => Ok(WorkingOrderReference::OVER_LONG),
-            "BETWEEN_LONG" => Ok(WorkingOrderReference::BETWEEN_LONG),
-            "BETWEEN_SHORT" => Ok(WorkingOrderReference::BETWEEN_SHORT),
-            "UNDER_SHORT" => Ok(WorkingOrderReference::UNDER_SHORT),
+            "OVER_LONG" => Ok(OrderReference::OVER_LONG),
+            "BETWEEN_LONG" => Ok(OrderReference::BETWEEN_LONG),
+            "BETWEEN_SHORT" => Ok(OrderReference::BETWEEN_SHORT),
+            "UNDER_SHORT" => Ok(OrderReference::UNDER_SHORT),
             _ => Err(()),
         }
     }
@@ -205,7 +205,7 @@ pub struct TradeConfirmation {
     pub deal_status: DealStatus,
     pub status: Option<ConfirmsStatus>,
     pub deal_id: String,
-    pub deal_reference: WorkingOrderReference,
+    pub deal_reference: OrderReference,
     pub reason: String,
 }
 
@@ -215,8 +215,8 @@ pub enum Direction {
     SELL,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum WorkingOrderReference {
+#[derive(Hash, Clone, Debug, Eq, PartialEq)]
+pub enum OrderReference {
     OVER_LONG,
     BETWEEN_LONG,
     BETWEEN_SHORT,
@@ -233,7 +233,7 @@ pub struct MarketOrderDetails {
 pub struct WorkingOrderDetails {
     pub direction: Direction,
     pub price: f64,
-    pub reference: WorkingOrderReference,
+    pub reference: OrderReference,
 }
 
 #[derive(Debug)]

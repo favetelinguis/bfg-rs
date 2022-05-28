@@ -61,7 +61,8 @@ impl ConnectionDetails {
     }
 }
 
-// TODO session should be an Option<Arc...> then use .expect in the states where it should always be set
+// TODO improve with type sessions so that session is avaliable only in the correct states.
+// Try to always have session in top IgBrokerageApi and then control access with getter setter in traits
 pub struct IgBrokerageApi {
     _session: Arc<Mutex<SessionState>>,
     pub rest: IgRestClient<HasSession>,

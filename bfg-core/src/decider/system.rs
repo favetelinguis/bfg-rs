@@ -3,7 +3,7 @@ use crate::decider::order::{WorkingOrder, WorkingOrderFactory};
 use crate::decider::order_manager::OrderManager;
 use crate::decider::{Command, Event, MarketInfo, OrderEvent, OrderReference};
 use crate::models::OhlcPrice;
-use crate::{Direction, WorkingOrderReference};
+use crate::{Direction, OrderReference};
 use chrono::{Duration, NaiveDateTime, NaiveTime, Utc};
 
 #[derive(Debug)]
@@ -235,7 +235,7 @@ impl System {
                 let command = Command::CreateWorkingOrder {
                     direction: Direction::BUY,
                     price: val.state.opening_range.high_ask,
-                    reference: WorkingOrderReference::OVER_LONG,
+                    reference: OrderReference::OVER_LONG,
                 };
                 (
                     System::ManageLong(val.into(), Long(WorkingOrderFactory::new())),
@@ -258,12 +258,12 @@ impl System {
                     Command::CreateWorkingOrder {
                         direction: Direction::BUY,
                         price: val.state.opening_range.low_ask,
-                        reference: WorkingOrderReference::BETWEEN_LONG,
+                        reference: OrderReference::BETWEEN_LONG,
                     },
                     Command::CreateWorkingOrder {
                         direction: Direction::SELL,
                         price: val.state.opening_range.high_bid,
-                        reference: WorkingOrderReference::BETWEEN_SHORT,
+                        reference: OrderReference::BETWEEN_SHORT,
                     },
                 ];
                 (
@@ -290,7 +290,7 @@ impl System {
                 let command = Command::CreateWorkingOrder {
                     direction: Direction::SELL,
                     price: val.state.opening_range.low_bid,
-                    reference: WorkingOrderReference::UNDER_SHORT,
+                    reference: OrderReference::UNDER_SHORT,
                 };
                 (
                     System::ManageShort(val.into(), Short(WorkingOrderFactory::new())),
@@ -522,7 +522,7 @@ mod tests {
     }
 
     fn e_o_position_open(reference: OrderReference) -> Event {
-        Event::Order(OrderEvent::PositionOpen {entry_level: 22.}, reference)
+        Event::Order(OrderEvent::PositionEntry {entry_level: 22.}, reference)
     }
 
     fn e_o_position_trailing_stop(reference: OrderReference) -> Event {
@@ -530,6 +530,6 @@ mod tests {
     }
 
     fn e_o_position_close(reference: OrderReference) -> Event {
-        Event::Order(OrderEvent::PositionClose {exit_level: 23.}, reference)
+        Event::Order(OrderEvent::PositionExit {exit_level: 23.}, reference)
     }
 }

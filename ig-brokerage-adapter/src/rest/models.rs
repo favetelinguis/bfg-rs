@@ -274,9 +274,9 @@ impl Default for CreateWorkingOrderRequest {
             working_order_type: WorkingOrderType::LIMIT,
             level: 0.,
             guaranteed_stop: false,
-            stop_distance: 10,
-            limit_distance: 10,
-            force_open: false, // This should be like netting?
+            stop_distance: 5,
+            limit_distance: 50,
+            force_open: false, // Is this to be like netting? Dont understand this
             currency_code: CurrencyCode::EUR,
         }
     }

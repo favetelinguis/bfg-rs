@@ -1,6 +1,6 @@
 use chrono::{DateTime, Duration, NaiveDate, NaiveTime, Utc};
 use crate::decider::system::{System, SystemFactory};
-use crate::{Direction, WorkingOrderReference};
+use crate::{Direction, OrderReference};
 use crate::models::OhlcPrice;
 use std::ops::{Add, Sub};
 
@@ -8,35 +8,20 @@ pub mod order;
 pub mod system;
 pub mod order_manager;
 
-#[derive(Hash, Clone, Debug, Eq, PartialEq)]
-pub enum OrderReference {
-    OVER_LONG,
-    BETWEEN_LONG,
-    BETWEEN_SHORT,
-    UNDER_SHORT,
-}
-
 pub enum OrderEvent {
-    ConfirmationOpenAccepted {deal_id: String, level: f64},
-    //{deal_id: String, deal_reference: WorkingOrderReference, level: f64},
+    ConfirmationOpenAccepted {level: f64},
     ConfirmationOpenRejected,
-    // {deal_reference: WorkingOrderReference, reason: String},
-    ConfirmationCloseAccepted,
-    // {deal_reference: WorkingOrderReference},
-    ConfirmationCloseRejected,
-    // {deal_reference: WorkingOrderReference, reason: String},
+    ConfirmationDeleteAccepted,
+    ConfirmationDeleteRejected,
     ConfirmationAmendedAccepted,
-    // {deal_reference: WorkingOrderReference, level: f64},
     ConfirmationAmendedRejected,
-    //{deal_reference: WorkingOrderReference, reason: String},
-    PositionOpen {entry_level: f64},
-    // {deal_reference: WorkingOrderReference, level: f64},
-    PositionClose {exit_level: f64}, // {deal_reference: WorkingOrderReference, level: f64},
+    PositionEntry {entry_level: f64}, // TODO There is a timestamp in RealtimeEvent i should use
+    PositionExit {exit_level: f64}, // TODO There is a timestamp in RealtimeEvent i should use
 }
 
 pub enum Event {
     Order(OrderEvent, OrderReference),
-    Market{update_time: NaiveTime, bid: f64, ask: f64}, // TODO this should be filterd so core only gets market updated when market is Tradable, filtering should be done in bfg_ig
+    Market{update_time: NaiveTime, bid: f64, ask: f64},
     Account(),
     Data {prices: Vec<OhlcPrice>}
 }
@@ -47,7 +32,7 @@ pub enum Command {
     CreateWorkingOrder {
         direction: Direction,
         price: f64,
-        reference: WorkingOrderReference,
+        reference: OrderReference,
     },
     CancelWorkingOrder {reference_to_cancel: OrderReference},
     UpdatePosition {deal_id: String, level: f64},
