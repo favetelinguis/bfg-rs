@@ -1,10 +1,9 @@
 use crate::decider::order::WorkingOrder::{PositionExited, WOCloseAccepted, WOOpenRejected};
 use crate::decider::order::{WorkingOrder, WorkingOrderFactory};
-use crate::decider::order_manager::OrderManager;
-use crate::decider::{Command, Event, MarketInfo, OrderEvent, OrderReference};
+use crate::decider::{Command, Event, MarketInfo};
 use crate::models::OhlcPrice;
 use crate::{Direction, OrderReference};
-use chrono::{Duration, NaiveDateTime, NaiveTime, Utc};
+use chrono::{NaiveDateTime, NaiveTime, Utc};
 
 #[derive(Debug)]
 pub struct SystemMachine<S> {
@@ -14,6 +13,8 @@ pub struct SystemMachine<S> {
 
 #[derive(Debug)]
 pub struct Setup;
+#[derive(Debug)]
+pub struct Error;
 #[derive(Debug)]
 pub struct AwaitData;
 #[derive(Debug)]
@@ -152,6 +153,56 @@ impl From<SystemMachine<DecideOrderPlacement>> for SystemMachine<Setup> {
     }
 }
 
+// All states can transition to error
+impl From<SystemMachine<DecideOrderPlacement>> for SystemMachine<Error> {
+    fn from(val: SystemMachine<DecideOrderPlacement>) -> Self {
+        Self {
+            state: Error,
+            market_info: val.market_info,
+        }
+    }
+}
+impl From<SystemMachine<ManageLongOrder>> for SystemMachine<Error> {
+    fn from(val: SystemMachine<ManageLongOrder>) -> Self {
+        Self {
+            state: Error,
+            market_info: val.market_info,
+        }
+    }
+}
+impl From<SystemMachine<ManageShortOrder>> for SystemMachine<Error> {
+    fn from(val: SystemMachine<ManageShortOrder>) -> Self {
+        Self {
+            state: Error,
+            market_info: val.market_info,
+        }
+    }
+}
+impl From<SystemMachine<ManageLongAndShortOrder>> for SystemMachine<Error> {
+    fn from(val: SystemMachine<ManageLongAndShortOrder>) -> Self {
+        Self {
+            state: Error,
+            market_info: val.market_info,
+        }
+    }
+}
+impl From<SystemMachine<AwaitData>> for SystemMachine<Error> {
+    fn from(val: SystemMachine<AwaitData>) -> Self {
+        Self {
+            state: Error,
+            market_info: val.market_info,
+        }
+    }
+}
+impl From<SystemMachine<Setup>> for SystemMachine<Error> {
+    fn from(val: SystemMachine<Setup>) -> Self {
+        Self {
+            state: Error,
+            market_info: val.market_info,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Long(WorkingOrder);
 #[derive(Debug)]
@@ -181,11 +232,11 @@ impl OpeningRange {
 pub enum System {
     Setup(SystemMachine<Setup>),
     AwaitData(SystemMachine<AwaitData>),
-    AwaitDataFailure(SystemMachine<DataFailure>),
     DecideOrderPlacement(SystemMachine<DecideOrderPlacement>),
     ManageLong(SystemMachine<ManageLongOrder>, Long),
     ManageLongAndShort(SystemMachine<ManageLongAndShortOrder>, Long, Short),
     ManageShort(SystemMachine<ManageShortOrder>, Short),
+    Error(SystemMachine<Error>),
 }
 
 impl System {
@@ -201,10 +252,6 @@ impl System {
                 System::AwaitData(val.into()),
                 vec![create_fetch_data_command()],
             ),
-            // AwaitData -> DataFailure []
-            (System::AwaitData(val), Event::Data { prices, .. }) if prices.is_empty() => {
-                (System::AwaitDataFailure(val.into()), vec![])
-            }
             // AwaitData -> DecideOrderPlacement []
             (System::AwaitData(val), Event::Data { prices, .. }) if !prices.is_empty() => {
                 let new_state = create_decide_order_placement_from_opening_range(val, prices);
@@ -368,6 +415,14 @@ impl System {
                     commands,
                 )
             }
+            // Error transitions - START
+            (System::DecideOrderPlacement(val), Event::Error(reason)) =>  (System::Error(val.into()), vec![Command::FatalFailure(reason.clone())]),
+            (System::ManageLong(val, _), Event::Error(reason)) =>  (System::Error(val.into()), vec![Command::FatalFailure(reason.clone())]),
+            (System::ManageShort(val, _), Event::Error(reason)) =>  (System::Error(val.into()), vec![Command::FatalFailure(reason.clone())]),
+            (System::ManageLongAndShort(val, _, _), Event::Error(reason)) =>  (System::Error(val.into()), vec![Command::FatalFailure(reason.clone())]),
+            (System::AwaitData(val), Event::Error(reason)) =>  (System::Error(val.into()), vec![Command::FatalFailure(reason.clone())]),
+            (System::Setup(val), Event::Error(reason)) =>  (System::Error(val.into()), vec![Command::FatalFailure(reason.clone())]),
+            // Error transitions - END
             (val, _) => (val, vec![]),
         }
     }
@@ -518,7 +573,7 @@ mod tests {
     }
 
     fn e_o_confirmation_open_accepted(reference: OrderReference) -> Event {
-        Event::Order(OrderEvent::ConfirmationOpenAccepted { deal_id: "".to_string(), level: 0.0 }, reference)
+        Event::Order(OrderEvent::ConfirmationOpenAccepted { level: 0.0 }, reference)
     }
 
     fn e_o_position_open(reference: OrderReference) -> Event {

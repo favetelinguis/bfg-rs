@@ -23,7 +23,8 @@ pub enum Event {
     Order(OrderEvent, OrderReference),
     Market{update_time: NaiveTime, bid: f64, ask: f64},
     Account(),
-    Data {prices: Vec<OhlcPrice>}
+    Data {prices: Vec<OhlcPrice>},
+    Error(String),
 }
 
 #[derive(Debug)]
@@ -39,6 +40,7 @@ pub enum Command {
     PublishTradeResults {
         wanted_entry_level: f64, actual_entry_level: f64,entry_time: DateTime<Utc>, exit_time: DateTime<Utc>, exit_level: f64, reference: OrderReference
     },
+    FatalFailure(String),
 }
 
 #[derive(Debug, Clone)]

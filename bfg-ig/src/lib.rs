@@ -166,29 +166,41 @@ impl BfgIg {
                                     if let Ok(result) = brokerage.rest.fetch_data(start.as_str(), end.as_str()).await {
                                         vec![Event::Data {prices: extract_prices(result)}]
                                     } else {
-                                        // Empty prices is failure
-                                        vec![Event::Data {prices: vec![]}]
+                                        vec![Event::Error("Rest failure when fetching data".to_string())]
                                     }
                                 }
                                 Command::CreateWorkingOrder{direction, price, reference} => {
                                     info!("Executing: CreateWorkingOrder");
-                                    brokerage.rest.open_working_order(direction, price, reference.into()).await.expect("Open working order never fail doo");
-                                    vec![]
+                                    if let Err(response) = brokerage.rest.open_working_order(direction, price, reference.into()).await {
+                                        vec![Event::Error("Rest failure when creating order".to_string())]
+                                    } else {
+                                        vec![]
+                                    }
                                 },
                                 Command::UpdatePosition{deal_id, level} => {
                                     info!("Executing: UpdatePosition");
-                                    brokerage.rest.edit_position(deal_id.as_str(), level).await.expect("Edit position never fail doo");
-                                    vec![]
+                                    if let Err(err) = brokerage.rest.edit_position(deal_id.as_str(), level).await.expect("Edit position never fail doo") {
+                                        vec![Event::Error("Rest failure when updating position".to_string())]
+                                    } else {
+                                        vec![]
+                                    }
                                 },
                                 Command::CancelWorkingOrder{ref reference_to_cancel} => {
                                     info!("Executing: CancelWorkingOrder");
                                     if let Some(deal_id) = trade_confirmation_cache.get_deal_id(reference_to_cancel) {
-                                        brokerage.rest.delete_working_order(deal_id).await.expect("Cancel working order never fail doo");
+                                        if let Err(err) = brokerage.rest.delete_working_order(deal_id).await.expect("Cancel working order never fail doo") {
+                                            vec![Event::Error("Rest failure when canceling working order".to_string())]
+                                        } else {
+                                            vec![]
+                                        }
                                     }
-                                    vec![]
                                 }
                                 Command::PublishTradeResults{..} => {
                                     info!("Executing: PublishTradeResults");
+                                    vec![]
+                                },
+                                Command::FatalFailure(reason) => {
+                                    info!("Executing: FatalFailure with reason {}", reason);
                                     vec![]
                                 },
                             };
