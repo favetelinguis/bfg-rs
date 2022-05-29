@@ -1,9 +1,83 @@
 use crate::BrokerageError;
-use bfg_core::models::{BfgTradeStatus, MarketUpdate, TradeConfirmation};
+use bfg_core::models::{BfgTradeStatus, TradeConfirmation};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 use tokio_tungstenite::tungstenite::protocol::Message;
+
+#[derive(Debug, Clone)]
+pub enum MarketState {
+    CLOSED,
+    OFFLINE,
+    TRADEABLE,
+    EDIT,
+    AUCTION,
+    AUCTION_NO_EDIT,
+    SUSPENDED,
+}
+
+impl FromStr for MarketState {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "TRADEABLE" => Ok(MarketState::TRADEABLE),
+            "AUCTION" => Ok(MarketState::AUCTION),
+            "CLOSED" => Ok(MarketState::CLOSED),
+            "AUCTION_NO_EDIT" => Ok(MarketState::AUCTION_NO_EDIT),
+            "SUSPENDED" => Ok(MarketState::SUSPENDED),
+            "EDIT" => Ok(MarketState::EDIT),
+            "OFFLINE" => Ok(MarketState::OFFLINE),
+            _ => Err(()),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct AccountUpdate {
+    pub account: Option<String>,
+    pub pnl: Option<f64>,
+    pub deposit: Option<f64>,
+    pub available_cash: Option<f64>,
+    pub pnl_lr: Option<f64>,
+    pub pnl_nlr: Option<f64>,
+    pub funds: Option<f64>,
+    pub margin: Option<f64>,
+    pub margin_lr: Option<f64>,
+    pub margin_nlr: Option<f64>,
+    pub available_to_deal: Option<f64>,
+    pub equity: Option<f64>,
+    pub equity_used: Option<f64>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct MarketUpdate {
+    pub bid: Option<f64>,
+    pub offer: Option<f64>,
+    pub market_delay: Option<usize>,
+    pub market_state: Option<MarketState>,
+    pub update_time: Option<String>,
+}
+
+impl Default for AccountUpdate {
+    fn default() -> Self {
+        AccountUpdate {
+            account: Some("ZQVBB".to_string()),
+            pnl: None,
+            deposit: None,
+            available_cash: None,
+            pnl_lr: None,
+            pnl_nlr: None,
+            funds: None,
+            margin: None,
+            margin_lr: None,
+            margin_nlr: None,
+            available_to_deal: None,
+            equity: None,
+            equity_used: None,
+        }
+    }
+}
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub enum Direction {

@@ -4,10 +4,10 @@ use crate::inputs::key::Key;
 use crate::io::IoEvent;
 use crate::ui::menu::MenuItem;
 use crate::ui::menu::MenuItem::{Help, Logs};
-use bfg_core::models::{AccountUpdate, MarketUpdate, SystemState};
-use ig_brokerage_adapter::realtime::models::OpenPositionUpdate;
+use bfg_ig::models::{MarketView, AccountView, TradeResultView, ConnectionInformationView};
 use log::{debug, error, warn};
 use tokio::sync::mpsc;
+use bfg_ig::SystemView;
 
 pub mod actions;
 pub mod state;
@@ -25,11 +25,13 @@ pub struct App {
     actions: Actions,
     state: AppState,
     active_menu_item: MenuItem,
-    pub market: MarketUpdate,
-    pub account: AccountUpdate,
-    pub trade: Option<OpenPositionUpdate>,
-    pub stream_status: String,
-    pub system: SystemState,
+    // Updated from IG Stream
+    pub market: MarketView,
+    pub account: AccountView,
+    pub results: Vec<TradeResultView>,
+    pub connection_information: ConnectionInformationView,
+    pub system: SystemView,
+    // ---
 }
 
 impl App {
@@ -45,11 +47,11 @@ impl App {
             is_loading,
             io_tx,
             active_menu_item,
-            market: MarketUpdate::default(),
-            account: AccountUpdate::default(),
-            trade: None,
-            stream_status: "NOT CONNECTED".to_string(),
-            system: SystemState::Setup,
+            market: Default::default(),
+            account: Default::default(),
+            connection_information: Default::default(),
+            system: Default::default(),
+            results: Default::default(),
         }
     }
 

@@ -1,18 +1,15 @@
 use crate::errors::BrokerageError;
-use crate::realtime::models::{
-    OpenPositionUpdate, RestDetails, TradeConfirmationUpdate, WorkingOrderUpdate,
-};
+use crate::realtime::models::{AccountUpdate, MarketUpdate, OpenPositionUpdate, RestDetails, TradeConfirmationUpdate, WorkingOrderUpdate};
 use crate::realtime::IgStreamClient;
 use crate::rest::models::FetchDataResponse;
 use crate::rest::{HasSession, IgRestClient};
 use bfg_core::models::{
-    AccountUpdate, DataUpdate, Decision, FetchDataDetails, MarketOrderDetails, MarketUpdate,
+    DataUpdate, Decision, FetchDataDetails,
     OhlcPrice, Price, TradeConfirmation, WorkingOrderDetails,
 };
-use bfg_core::BfgEvent;
+use log::error;
 use std::env;
 use std::sync::Arc;
-use log::error;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::Mutex;
 
@@ -86,46 +83,6 @@ impl IgBrokerageApi {
             rest: connected_rest,
             _stream: stream,
         }
-    }
-
-    pub async fn execute_decision(
-        &self,
-        decision: Decision,
-    ) -> Result<Option<BfgEvent>, BrokerageError> {
-        match decision {
-            Decision::FetchData(FetchDataDetails { start, end }) => {
-                error!("Fetching data");
-                let res = self
-                    .rest
-                    .fetch_data(start.as_str(), end.as_str())
-                    .await
-                    .expect("Fetch data should never fail doo");
-                return Ok(Some(BfgEvent::Data(create_data_update(res))));
-                // return Ok(Some(BfgEvent::Data(create_data_update_noargs())));
-            }
-            Decision::CreateWorkingOrder(WorkingOrderDetails {
-                direction,
-                price,
-                reference,
-            }) => {
-                error!("Creating WO");
-                self.rest
-                    .open_working_order(direction, price, format!("{:?}", reference).as_str())
-                    .await?;
-            }
-            Decision::CancelWorkingOrder(deal_id) => {
-                error!("Cancel WO");
-                self.rest.delete_working_order(deal_id.as_str()).await?;
-            }
-            Decision::UpdateWithTrailingStop(deal_id, stop_level) => {
-                error!("Update with Trailing stop");
-                self.rest
-                    .edit_position(deal_id.as_str(), stop_level)
-                    .await?;
-            }
-            Decision::NoOp => return Ok(None),
-        }
-        Ok(None)
     }
 }
 

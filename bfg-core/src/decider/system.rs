@@ -2,7 +2,7 @@ use crate::decider::order::WorkingOrder::{PositionExited, WOCloseAccepted, WOOpe
 use crate::decider::order::{WorkingOrder, WorkingOrderFactory};
 use crate::decider::{Command, Event, MarketInfo};
 use crate::models::OhlcPrice;
-use crate::{Direction, OrderReference};
+use crate::models::{Direction, OrderReference};
 use chrono::{NaiveDateTime, NaiveTime, Utc};
 
 #[derive(Debug)]
@@ -204,16 +204,16 @@ impl From<SystemMachine<Setup>> for SystemMachine<Error> {
 }
 
 #[derive(Debug)]
-pub struct Long(WorkingOrder);
+pub struct Long(pub WorkingOrder);
 #[derive(Debug)]
-pub struct Short(WorkingOrder);
+pub struct Short(pub WorkingOrder);
 
 #[derive(Debug, Default)]
 pub struct OpeningRange {
-    high_ask: f64,
-    high_bid: f64,
-    low_ask: f64,
-    low_bid: f64,
+    pub high_ask: f64,
+    pub high_bid: f64,
+    pub low_ask: f64,
+    pub low_bid: f64,
 }
 
 impl OpeningRange {
@@ -416,12 +416,30 @@ impl System {
                 )
             }
             // Error transitions - START
-            (System::DecideOrderPlacement(val), Event::Error(reason)) =>  (System::Error(val.into()), vec![Command::FatalFailure(reason.clone())]),
-            (System::ManageLong(val, _), Event::Error(reason)) =>  (System::Error(val.into()), vec![Command::FatalFailure(reason.clone())]),
-            (System::ManageShort(val, _), Event::Error(reason)) =>  (System::Error(val.into()), vec![Command::FatalFailure(reason.clone())]),
-            (System::ManageLongAndShort(val, _, _), Event::Error(reason)) =>  (System::Error(val.into()), vec![Command::FatalFailure(reason.clone())]),
-            (System::AwaitData(val), Event::Error(reason)) =>  (System::Error(val.into()), vec![Command::FatalFailure(reason.clone())]),
-            (System::Setup(val), Event::Error(reason)) =>  (System::Error(val.into()), vec![Command::FatalFailure(reason.clone())]),
+            (System::DecideOrderPlacement(val), Event::Error(reason)) => (
+                System::Error(val.into()),
+                vec![Command::FatalFailure(reason.clone())],
+            ),
+            (System::ManageLong(val, _), Event::Error(reason)) => (
+                System::Error(val.into()),
+                vec![Command::FatalFailure(reason.clone())],
+            ),
+            (System::ManageShort(val, _), Event::Error(reason)) => (
+                System::Error(val.into()),
+                vec![Command::FatalFailure(reason.clone())],
+            ),
+            (System::ManageLongAndShort(val, _, _), Event::Error(reason)) => (
+                System::Error(val.into()),
+                vec![Command::FatalFailure(reason.clone())],
+            ),
+            (System::AwaitData(val), Event::Error(reason)) => (
+                System::Error(val.into()),
+                vec![Command::FatalFailure(reason.clone())],
+            ),
+            (System::Setup(val), Event::Error(reason)) => (
+                System::Error(val.into()),
+                vec![Command::FatalFailure(reason.clone())],
+            ),
             // Error transitions - END
             (val, _) => (val, vec![]),
         }
@@ -492,11 +510,11 @@ impl SystemFactory {
 
 #[cfg(test)]
 mod tests {
+    use crate::decider::order::WorkingOrder;
     use crate::decider::system::{Long, Setup, System, SystemFactory, SystemMachine};
     use crate::decider::{Command, Event, OrderEvent, OrderReference};
-    use chrono::Utc;
-    use crate::decider::order::WorkingOrder;
     use crate::models::{OhlcPrice, Price};
+    use chrono::Utc;
 
     #[test]
     fn it_works_basic() {
@@ -564,20 +582,35 @@ mod tests {
     fn e_data() -> Event {
         Event::Data {
             prices: vec![OhlcPrice {
-                high: Price { bid: 98.0, ask: 100.0 },
-                open: Price { bid: 71.0, ask: 72.0 },
-                close: Price { bid: 72.0, ask: 73.0 },
-                low: Price { bid: 68.0, ask: 70.0 }
-            }]
+                high: Price {
+                    bid: 98.0,
+                    ask: 100.0,
+                },
+                open: Price {
+                    bid: 71.0,
+                    ask: 72.0,
+                },
+                close: Price {
+                    bid: 72.0,
+                    ask: 73.0,
+                },
+                low: Price {
+                    bid: 68.0,
+                    ask: 70.0,
+                },
+            }],
         }
     }
 
     fn e_o_confirmation_open_accepted(reference: OrderReference) -> Event {
-        Event::Order(OrderEvent::ConfirmationOpenAccepted { level: 0.0 }, reference)
+        Event::Order(
+            OrderEvent::ConfirmationOpenAccepted { level: 0.0 },
+            reference,
+        )
     }
 
     fn e_o_position_open(reference: OrderReference) -> Event {
-        Event::Order(OrderEvent::PositionEntry {entry_level: 22.}, reference)
+        Event::Order(OrderEvent::PositionEntry { entry_level: 22. }, reference)
     }
 
     fn e_o_position_trailing_stop(reference: OrderReference) -> Event {
@@ -585,6 +618,6 @@ mod tests {
     }
 
     fn e_o_position_close(reference: OrderReference) -> Event {
-        Event::Order(OrderEvent::PositionExit {exit_level: 23.}, reference)
+        Event::Order(OrderEvent::PositionExit { exit_level: 23. }, reference)
     }
 }

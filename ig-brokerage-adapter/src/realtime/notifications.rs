@@ -1,7 +1,7 @@
-use crate::realtime::models::{OpenPositionUpdate, TradeConfirmationUpdate, WorkingOrderUpdate};
-use bfg_core::models::{AccountUpdate, MarketState, MarketUpdate};
+use crate::realtime::models::{AccountUpdate, MarketState, OpenPositionUpdate, TradeConfirmationUpdate, WorkingOrderUpdate};
 use std::borrow::BorrowMut;
 use std::str::FromStr;
+use crate::MarketUpdate;
 
 type MarketState2 = (
     Option<f64>,
