@@ -9,7 +9,8 @@ use std::borrow::{Borrow};
 use std::collections::{HashMap, LinkedList};
 use std::str::FromStr;
 use tokio::sync::mpsc::Sender;
-use bfg_core::decider::system::{Long, Short, System};
+use bfg_core::decider::order::WorkingOrder;
+use bfg_core::decider::system::{System};
 use crate::models::{AccountView, MarketView, ConnectionInformationView, TradeResultView};
 
 pub mod models;
@@ -30,8 +31,13 @@ pub struct SystemView {
     pub opening_range_high_bid: Option<f64>,
     pub opening_range_low_ask: Option<f64>,
     pub opening_range_low_bid: Option<f64>,
-    pub short_state: Option<String>,
-    pub long_state: Option<String>,
+    pub orders: Vec<OrderView>,
+}
+
+#[derive(Debug, Default)]
+pub struct OrderView {
+    pub reference: String,
+    pub state: String,
 }
 
 #[derive(Debug, Default)]
@@ -264,7 +270,7 @@ impl BfgIg {
                                     info!("Executing: PublishTradeResults");
                                     trade_results_cache.update(update);
                                     ig_tx.send(trade_results_cache.get_current_view()).await.expect("Failed sending message");
-                                    vec![] // TODO i could send an event here to step system instead of waiting for next market event to get from PublishTradeResult
+                                    vec![Event::PositionExit]
                                 }
                                 Command::FatalFailure(reason) => {
                                     info!("Executing: FatalFailure with reason {}", reason);
@@ -302,32 +308,13 @@ fn get_current_system_view(system: &System) -> IgEvent {
                 opening_range_low_bid: Some(system.state.opening_range.low_bid),
                 ..Default::default()
             },
-        System::ManageShort(system, Short(short)) => SystemView {
-            state: String::from("ManageShort"),
+        System::ManageOrders(system) => SystemView {
+            state: String::from("ManageOrders"),
             opening_range_high_ask: Some(system.state.opening_range.high_ask),
             opening_range_high_bid: Some(system.state.opening_range.high_bid),
             opening_range_low_ask: Some(system.state.opening_range.low_ask),
             opening_range_low_bid: Some(system.state.opening_range.low_bid),
-            short_state: Some(short.to_string()),
-            ..Default::default()
-        },
-        System::ManageLongAndShort(system, Long(long), Short(short)) => SystemView {
-            state: String::from("ManageLongAndShort"),
-            opening_range_high_ask: Some(system.state.opening_range.high_ask),
-            opening_range_high_bid: Some(system.state.opening_range.high_bid),
-            opening_range_low_ask: Some(system.state.opening_range.low_ask),
-            opening_range_low_bid: Some(system.state.opening_range.low_bid),
-            short_state: Some(short.to_string()),
-            long_state: Some(long.to_string()),
-            ..Default::default()
-        },
-        System::ManageLong(system, Long(long)) => SystemView {
-            state: String::from("ManageLong"),
-            opening_range_high_ask: Some(system.state.opening_range.high_ask),
-            opening_range_high_bid: Some(system.state.opening_range.high_bid),
-            opening_range_low_ask: Some(system.state.opening_range.low_ask),
-            opening_range_low_bid: Some(system.state.opening_range.low_bid),
-            long_state: Some(long.to_string()),
+            orders: create_order_view(system.state.order_manager.get_orders()),
             ..Default::default()
         },
         System::Error(_) => SystemView {
@@ -336,6 +323,14 @@ fn get_current_system_view(system: &System) -> IgEvent {
         },
     };
     IgEvent::SystemView(view)
+}
+
+fn create_order_view(orders: &HashMap<OrderReference, WorkingOrder>) -> Vec<OrderView> {
+    orders.iter()
+        .map(|(k, v)| OrderView {
+            state: format!("{:?}", k),
+            reference: v.to_string(),
+        }).collect()
 }
 
 fn extract_prices(res: FetchDataResponse) -> Vec<OhlcPrice> {

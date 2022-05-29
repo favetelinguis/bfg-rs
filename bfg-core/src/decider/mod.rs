@@ -29,6 +29,7 @@ pub enum Event {
         prices: Vec<OhlcPrice>,
     },
     Error(String),
+    PositionExit,
 }
 
 #[derive(Debug)]

@@ -198,8 +198,12 @@ pub fn draw_account_view<'a>(state: &AccountView) -> Paragraph<'a> {
 }
 pub fn draw_system_view<'a>(view: &SystemView) -> Paragraph<'a> {
     let status = format!("System Status: {}", view.state);
-    let order_status_long = format!(" - Status Long: {:?}", view.long_state);
-    let order_status_short = format!(" - Status Short: {:?}", view.short_state);
+    let mut spans = vec![];
+    for order in view.orders.iter() {
+        let text = format!(" - {} {}", order.reference, order.state);
+        let span = Spans::from(Span::raw(text));
+        spans.push(span);
+    }
     let or_high_ask = format!(
         "Opening Range High Ask: {}",
         view.opening_range_high_ask.unwrap_or_default()
@@ -216,15 +220,15 @@ pub fn draw_system_view<'a>(view: &SystemView) -> Paragraph<'a> {
         "Opening Range Low Bid: {}",
         view.opening_range_low_bid.unwrap_or_default()
     );
-    Paragraph::new(vec![
+    spans.extend(vec![
         Spans::from(Span::raw(status)),
-        Spans::from(Span::raw(order_status_long)),
-        Spans::from(Span::raw(order_status_short)),
         Spans::from(Span::raw(or_high_ask)),
         Spans::from(Span::raw(or_high_bid)),
         Spans::from(Span::raw(or_low_ask)),
         Spans::from(Span::raw(or_low_bid)),
-    ])
+    ]);
+
+    Paragraph::new(spans)
     .style(Style::default().fg(Color::LightCyan))
     .alignment(Alignment::Left)
     .block(

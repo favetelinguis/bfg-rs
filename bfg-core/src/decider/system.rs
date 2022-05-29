@@ -1,9 +1,13 @@
+use std::borrow::{Borrow, BorrowMut};
+use std::collections::hash_map::Entry;
+use std::collections::HashMap;
 use crate::decider::order::WorkingOrder::{PositionExited, WOCloseAccepted, WOOpenRejected};
 use crate::decider::order::{WorkingOrder, WorkingOrderFactory};
 use crate::decider::{Command, Event, MarketInfo};
 use crate::models::OhlcPrice;
 use crate::models::{Direction, OrderReference};
 use chrono::{NaiveDateTime, NaiveTime, Utc};
+use log::Level::Debug;
 
 #[derive(Debug)]
 pub struct SystemMachine<S> {
@@ -22,18 +26,12 @@ pub struct DataFailure;
 #[derive(Debug)]
 pub struct DecideOrderPlacement {
     pub opening_range: OpeningRange,
+    pub order_manager: OrderManager,
 }
 #[derive(Debug)]
-pub struct ManageLongOrder {
+pub struct ManageOrders {
     pub opening_range: OpeningRange,
-}
-#[derive(Debug)]
-pub struct ManageShortOrder {
-    pub opening_range: OpeningRange,
-}
-#[derive(Debug)]
-pub struct ManageLongAndShortOrder {
-    pub opening_range: OpeningRange,
+    pub order_manager: OrderManager,
 }
 
 // Starting state
@@ -66,78 +64,34 @@ impl From<SystemMachine<AwaitData>> for SystemMachine<DataFailure> {
 
 impl From<SystemMachine<AwaitData>> for SystemMachine<DecideOrderPlacement> {
     fn from(val: SystemMachine<AwaitData>) -> Self {
-        // Shortcoming of using from trait, cant create opening_range just give dummy value
-        // I will not create DecideOrderPlacement with the from trait i will create manually, just need this to
-        // propagate opening_range.
         Self {
             state: DecideOrderPlacement {
                 opening_range: Default::default(),
+                order_manager: Default::default(),
             },
             market_info: val.market_info,
         }
     }
 }
 
-impl From<SystemMachine<DecideOrderPlacement>> for SystemMachine<ManageLongOrder> {
+impl From<SystemMachine<DecideOrderPlacement>> for SystemMachine<ManageOrders> {
     fn from(val: SystemMachine<DecideOrderPlacement>) -> Self {
         Self {
-            state: ManageLongOrder {
+            state: ManageOrders {
                 opening_range: val.state.opening_range,
+                order_manager: val.state.order_manager,
             },
             market_info: val.market_info,
         }
     }
 }
 
-impl From<SystemMachine<DecideOrderPlacement>> for SystemMachine<ManageLongAndShortOrder> {
-    fn from(val: SystemMachine<DecideOrderPlacement>) -> Self {
-        Self {
-            state: ManageLongAndShortOrder {
-                opening_range: val.state.opening_range,
-            },
-            market_info: val.market_info,
-        }
-    }
-}
-
-impl From<SystemMachine<DecideOrderPlacement>> for SystemMachine<ManageShortOrder> {
-    fn from(val: SystemMachine<DecideOrderPlacement>) -> Self {
-        Self {
-            state: ManageShortOrder {
-                opening_range: val.state.opening_range,
-            },
-            market_info: val.market_info,
-        }
-    }
-}
-
-impl From<SystemMachine<ManageLongOrder>> for SystemMachine<DecideOrderPlacement> {
-    fn from(val: SystemMachine<ManageLongOrder>) -> Self {
+impl From<SystemMachine<ManageOrders>> for SystemMachine<DecideOrderPlacement> {
+    fn from(val: SystemMachine<ManageOrders>) -> Self {
         Self {
             state: DecideOrderPlacement {
                 opening_range: val.state.opening_range,
-            },
-            market_info: val.market_info,
-        }
-    }
-}
-
-impl From<SystemMachine<ManageLongAndShortOrder>> for SystemMachine<DecideOrderPlacement> {
-    fn from(val: SystemMachine<ManageLongAndShortOrder>) -> Self {
-        Self {
-            state: DecideOrderPlacement {
-                opening_range: val.state.opening_range,
-            },
-            market_info: val.market_info,
-        }
-    }
-}
-
-impl From<SystemMachine<ManageShortOrder>> for SystemMachine<DecideOrderPlacement> {
-    fn from(val: SystemMachine<ManageShortOrder>) -> Self {
-        Self {
-            state: DecideOrderPlacement {
-                opening_range: val.state.opening_range,
+                order_manager: Default::default(), // Reset all orders
             },
             market_info: val.market_info,
         }
@@ -154,32 +108,8 @@ impl From<SystemMachine<DecideOrderPlacement>> for SystemMachine<Setup> {
 }
 
 // All states can transition to error
-impl From<SystemMachine<DecideOrderPlacement>> for SystemMachine<Error> {
-    fn from(val: SystemMachine<DecideOrderPlacement>) -> Self {
-        Self {
-            state: Error,
-            market_info: val.market_info,
-        }
-    }
-}
-impl From<SystemMachine<ManageLongOrder>> for SystemMachine<Error> {
-    fn from(val: SystemMachine<ManageLongOrder>) -> Self {
-        Self {
-            state: Error,
-            market_info: val.market_info,
-        }
-    }
-}
-impl From<SystemMachine<ManageShortOrder>> for SystemMachine<Error> {
-    fn from(val: SystemMachine<ManageShortOrder>) -> Self {
-        Self {
-            state: Error,
-            market_info: val.market_info,
-        }
-    }
-}
-impl From<SystemMachine<ManageLongAndShortOrder>> for SystemMachine<Error> {
-    fn from(val: SystemMachine<ManageLongAndShortOrder>) -> Self {
+impl From<SystemMachine<Setup>> for SystemMachine<Error> {
+    fn from(val: SystemMachine<Setup>) -> Self {
         Self {
             state: Error,
             market_info: val.market_info,
@@ -194,19 +124,22 @@ impl From<SystemMachine<AwaitData>> for SystemMachine<Error> {
         }
     }
 }
-impl From<SystemMachine<Setup>> for SystemMachine<Error> {
-    fn from(val: SystemMachine<Setup>) -> Self {
+impl From<SystemMachine<DecideOrderPlacement>> for SystemMachine<Error> {
+    fn from(val: SystemMachine<DecideOrderPlacement>) -> Self {
         Self {
             state: Error,
             market_info: val.market_info,
         }
     }
 }
-
-#[derive(Debug)]
-pub struct Long(pub WorkingOrder);
-#[derive(Debug)]
-pub struct Short(pub WorkingOrder);
+impl From<SystemMachine<ManageOrders>> for SystemMachine<Error> {
+    fn from(val: SystemMachine<ManageOrders>) -> Self {
+        Self {
+            state: Error,
+            market_info: val.market_info,
+        }
+    }
+}
 
 #[derive(Debug, Default)]
 pub struct OpeningRange {
@@ -233,9 +166,7 @@ pub enum System {
     Setup(SystemMachine<Setup>),
     AwaitData(SystemMachine<AwaitData>),
     DecideOrderPlacement(SystemMachine<DecideOrderPlacement>),
-    ManageLong(SystemMachine<ManageLongOrder>, Long),
-    ManageLongAndShort(SystemMachine<ManageLongAndShortOrder>, Long, Short),
-    ManageShort(SystemMachine<ManageShortOrder>, Short),
+    ManageOrders(SystemMachine<ManageOrders>),
     Error(SystemMachine<Error>),
 }
 
@@ -266,8 +197,7 @@ impl System {
             ) if !val.market_info.is_inside_trading_hours(update_time) => {
                 (System::Setup(val.into()), vec![])
             }
-
-            // DecideOrderPlacement -> ManageLong [CreateWorkingOrder]
+            // DecideOrderPlacement -> ManageOrders [CreateWorkingOrder]
             (
                 System::DecideOrderPlacement(val),
                 Event::Market {
@@ -284,12 +214,14 @@ impl System {
                     price: val.state.opening_range.high_ask,
                     reference: OrderReference::OVER_LONG,
                 };
+                let mut new_system: SystemMachine<ManageOrders >= val.into();
+                new_system.state.order_manager.create_order(OrderReference::OVER_LONG);
                 (
-                    System::ManageLong(val.into(), Long(WorkingOrderFactory::new())),
+                    System::ManageOrders(new_system),
                     vec![command],
                 )
             }
-            // DecideOrderPlacement -> ManageLongAndShortOrder [CreateWorkingOrder]
+            // DecideOrderPlacement -> ManageOrders [CreateWorkingOrder, CreateWorkingOrder]
             (
                 System::DecideOrderPlacement(val),
                 Event::Market {
@@ -313,16 +245,15 @@ impl System {
                         reference: OrderReference::BETWEEN_SHORT,
                     },
                 ];
+                let mut new_system: SystemMachine<ManageOrders >= val.into();
+                new_system.state.order_manager.create_order(OrderReference::BETWEEN_LONG);
+                new_system.state.order_manager.create_order(OrderReference::BETWEEN_SHORT);
                 (
-                    System::ManageLongAndShort(
-                        val.into(),
-                        Long(WorkingOrderFactory::new()),
-                        Short(WorkingOrderFactory::new()),
-                    ),
+                    System::ManageOrders(new_system),
                     commands,
                 )
             }
-            // DecideOrderPlacement -> ManageShortOrder [CreateWorkingOrder]
+            // DecideOrderPlacement -> ManageOrders [CreateWorkingOrder]
             (
                 System::DecideOrderPlacement(val),
                 Event::Market {
@@ -339,96 +270,35 @@ impl System {
                     price: val.state.opening_range.low_bid,
                     reference: OrderReference::UNDER_SHORT,
                 };
+                let mut new_system: SystemMachine<ManageOrders >= val.into();
+                new_system.state.order_manager.create_order(OrderReference::UNDER_SHORT);
                 (
-                    System::ManageShort(val.into(), Short(WorkingOrderFactory::new())),
+                    System::ManageOrders(new_system),
                     vec![command],
                 )
             }
-            // ManageLong -> DecideOrderPlacement []
-            (System::ManageLong(val, Long(PositionExited(_) | WOOpenRejected(_))), _) => {
-                (System::DecideOrderPlacement(val.into()), vec![])
-            }
-
-            // ManageLong -> ManageLong [...]
+            // ManageOrders -> ManageOrders [...] - Market
             (
-                System::ManageLong(val, Long(long)),
-                ref event @ (Event::Market { .. } | Event::Order(_, OrderReference::OVER_LONG)),
+                System::ManageOrders(mut val),
+                event @ Event::Market { .. }
             ) => {
-                let (long, commands) = long.step(event);
-                (System::ManageLong(val, Long(long)), commands)
+                let commands = val.borrow_mut().state.order_manager.step_all(event);
+                (System::ManageOrders(val), commands)
             }
-            // ManageShort -> DecideOrderPlacement []
+            // ManageOrders -> ManageOrders [...] - Order
             (
-                System::ManageShort(val, Short(PositionExited(_) | WOOpenRejected(_))),
-                Event::Market { .. },
-            ) => (System::DecideOrderPlacement(val.into()), vec![]),
-            // ManageShort -> ManageShort [...]
-            (
-                System::ManageShort(val, Short(short)),
-                ref event @ (Event::Market { .. } | Event::Order(_, OrderReference::UNDER_SHORT)),
+                System::ManageOrders(mut val),
+                event @ Event::Order(_, reference)
             ) => {
-                let (short, commands) = short.step(event);
-                (System::ManageShort(val, Short(short)), commands)
+                let commands = val.borrow_mut().state.order_manager.step_one(reference.clone(), event);
+                (System::ManageOrders(val), commands)
             }
-            // ManageLongAndShort -> DecideOrderPlacement []
-            (
-                System::ManageLongAndShort(
-                    val,
-                    Long(PositionExited(_) | WOOpenRejected(_) | WOCloseAccepted(_)),
-                    Short(PositionExited(_) | WOOpenRejected(_) | WOCloseAccepted(_)),
-                ),
-                Event::Market { .. },
-            ) => (System::DecideOrderPlacement(val.into()), vec![]),
-            // ManageLongAndShort -> ManageLongAndShort []
-            (
-                System::ManageLongAndShort(val, Long(mut long), Short(mut short)),
-                ref event @ (Event::Market { .. }
-                | Event::Order(
-                    _,
-                    OrderReference::BETWEEN_LONG | OrderReference::BETWEEN_SHORT,
-                )),
-            ) => {
-                let mut commands = vec![];
-                match event {
-                    Event::Order(_, OrderReference::BETWEEN_LONG) => {
-                        let (new_long, long_commands) = long.step(event);
-                        long = new_long;
-                        commands.extend(long_commands);
-                    }
-                    Event::Order(_, OrderReference::BETWEEN_SHORT) => {
-                        let (new_short, short_commands) = short.step(event);
-                        short = new_short;
-                        commands.extend(short_commands);
-                    }
-                    Event::Market { .. } => {
-                        let (new_long, long_commands) = long.step(event);
-                        long = new_long;
-                        let (new_short, short_commands) = short.step(event);
-                        short = new_short;
-                        commands.extend(long_commands);
-                        commands.extend(short_commands);
-                    }
-                    _ => unreachable!(),
-                }
-                (
-                    System::ManageLongAndShort(val, Long(long), Short(short)),
-                    commands,
-                )
-            }
+            (System::ManageOrders(val), Event::PositionExit) => (
+                System::DecideOrderPlacement(val.into()),
+                vec![],
+            ),
             // Error transitions - START
-            (System::DecideOrderPlacement(val), Event::Error(reason)) => (
-                System::Error(val.into()),
-                vec![Command::FatalFailure(reason.clone())],
-            ),
-            (System::ManageLong(val, _), Event::Error(reason)) => (
-                System::Error(val.into()),
-                vec![Command::FatalFailure(reason.clone())],
-            ),
-            (System::ManageShort(val, _), Event::Error(reason)) => (
-                System::Error(val.into()),
-                vec![Command::FatalFailure(reason.clone())],
-            ),
-            (System::ManageLongAndShort(val, _, _), Event::Error(reason)) => (
+            (System::Setup(val), Event::Error(reason)) => (
                 System::Error(val.into()),
                 vec![Command::FatalFailure(reason.clone())],
             ),
@@ -436,7 +306,11 @@ impl System {
                 System::Error(val.into()),
                 vec![Command::FatalFailure(reason.clone())],
             ),
-            (System::Setup(val), Event::Error(reason)) => (
+            (System::ManageOrders(val), Event::Error(reason)) => (
+                System::Error(val.into()),
+                vec![Command::FatalFailure(reason.clone())],
+            ),
+            (System::DecideOrderPlacement(val), Event::Error(reason)) => (
                 System::Error(val.into()),
                 vec![Command::FatalFailure(reason.clone())],
             ),
@@ -508,10 +382,46 @@ impl SystemFactory {
     }
 }
 
+#[derive(Debug, Default)]
+pub struct OrderManager {
+    orders: HashMap<OrderReference, WorkingOrder>,
+}
+
+impl OrderManager {
+    fn create_order(&mut self, reference: OrderReference) {
+        self.orders.insert(reference, WorkingOrderFactory::new());
+    }
+
+    /// An event that only affects a single order
+    fn step_one(&mut self, reference: OrderReference, event: &Event) -> Vec<Command> {
+        if let Some(order) = self.orders.remove(reference.borrow()) {
+            let (new_state, commands) = order.step(event);
+            self.orders.insert(reference, new_state);
+            return commands
+        }
+        vec![]
+    }
+
+    /// An event that should be triggered for all orders
+    fn step_all(&mut self, event: &Event) -> Vec<Command> {
+        let mut commands = vec![];
+        let keys: Vec<OrderReference> = self.orders.keys().cloned().collect();
+        for reference in keys {
+            commands.extend(self.step_one(reference, event));
+        }
+        commands
+    }
+
+    // Get a view of the orders
+    pub fn get_orders(&self) -> &HashMap<OrderReference, WorkingOrder> {
+        self.orders.borrow()
+    }
+}
+
+
 #[cfg(test)]
 mod tests {
-    use crate::decider::order::WorkingOrder;
-    use crate::decider::system::{Long, Setup, System, SystemFactory, SystemMachine};
+    use crate::decider::system::{Setup, System, SystemFactory, SystemMachine};
     use crate::decider::{Command, Event, OrderEvent, OrderReference};
     use crate::models::{OhlcPrice, Price};
     use chrono::Utc;
@@ -549,7 +459,7 @@ mod tests {
         ]);
         // Assert state
         match s {
-            System::ManageLong(_, Long(WorkingOrder::WOOpenAccepted(_))) => {}
+            System::ManageOrders(_) => {}
             _ => panic!("Wrong system state {:#?}", s),
         }
         // Assert commands
