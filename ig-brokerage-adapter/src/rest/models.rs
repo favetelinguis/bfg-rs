@@ -1,6 +1,7 @@
 use crate::realtime::models::Direction;
 use chrono::{NaiveDateTime, NaiveTime, Utc};
 use serde::{Deserialize, Serialize};
+use bfg_core::decider::MarketInfo;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ApiResponse(pub String);
@@ -223,17 +224,22 @@ impl Default for EditPositionRequest {
 }
 
 impl EditPositionRequest {
-    pub fn new(stop_level: f64) -> Self {
-        Self {
+    pub fn new(stop_level: f64, trailing_stop_distance: u8, target_level: Option<f64>) -> Self {
+        let mut val = Self {
             stop_level,
+            trailing_stop_distance,
             ..EditPositionRequest::default()
+        };
+        if let Some(target) = target_level {
+            val.limit_level = target;
         }
+        val
     }
 }
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct CreateWorkingOrderRequest {
     #[serde(rename = "currencyCode")]
-    pub currency_code: CurrencyCode,
+    pub currency_code: String,
     #[serde(rename = "dealReference")]
     pub deal_reference: String,
     pub direction: Direction,
@@ -255,6 +261,8 @@ pub struct CreateWorkingOrderRequest {
     pub time_in_force: String,
     #[serde(rename = "type")]
     pub working_order_type: WorkingOrderType,
+    #[serde(rename = "limitLevel")]
+    pub limit_level: f64,
 }
 
 impl Default for CreateWorkingOrderRequest {
@@ -270,26 +278,41 @@ impl Default for CreateWorkingOrderRequest {
             epic: "IX.D.DAX.IFMM.IP".to_string(),
             expiry: "-".to_string(),
             direction: Direction::BUY,
-            size: 1,
+            size: 0,
             working_order_type: WorkingOrderType::LIMIT,
             level: 0.,
             guaranteed_stop: false,
-            stop_distance: 5,
-            limit_distance: 50,
+            stop_distance: 0,
+            limit_distance: 0,
             force_open: false, // Is this to be like netting? Dont understand this
-            currency_code: CurrencyCode::EUR,
+            currency_code: "EUR".to_string(),
+            limit_level: 0.,
         }
     }
 }
 
 impl CreateWorkingOrderRequest {
-    pub fn new(direction: Direction, level: f64, reference: &str) -> Self {
-        Self {
+    pub fn new(direction: Direction, level: f64, reference: &str, market_info: MarketInfo, target_price: Option<f64>) -> Self {
+        let mut val = Self {
             direction,
             level,
             deal_reference: reference.to_string(),
+            epic: market_info.epic,
+            expiry: market_info.expiry,
+            size: market_info.min_lot_size,
+            stop_distance: market_info.min_stop_distance,
+            currency_code: market_info.currency,
+
             ..CreateWorkingOrderRequest::default()
+        };
+        if let Some(target) = target_price {
+            // If we specify a target
+            val.limit_level = target;
+        } else {
+            // Default target
+            val.limit_distance = market_info.min_stop_distance * 10;
         }
+        val
     }
 }
 
@@ -310,6 +333,8 @@ pub struct OpenPositionRequest {
     pub force_open: bool, //"true",
     #[serde(rename = "limitDistance")]
     pub limit_distance: u8, //"10",
+    #[serde(rename = "limitLevel")]
+    pub limit_level: f64,
     #[serde(rename = "currencyCode")]
     pub currency_code: CurrencyCode, //"EUR"
     #[serde(rename = "dealReference")]
@@ -323,14 +348,15 @@ impl Default for OpenPositionRequest {
             epic: "IX.D.DAX.IFMM.IP".to_string(),
             expiry: "-".to_string(),
             direction: Direction::BUY,
-            size: 1,
+            size: 0,
             order_type: OrderType::LIMIT,
             level: 0.,
             guaranteed_stop: false,
-            stop_distance: 5,
-            limit_distance: 5,
+            stop_distance: 0,
+            limit_distance: 0,
             force_open: true,
             currency_code: CurrencyCode::EUR,
+            limit_level: 0.,
         }
     }
 }

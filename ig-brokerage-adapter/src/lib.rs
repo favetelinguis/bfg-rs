@@ -12,6 +12,8 @@ use std::env;
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::Mutex;
+use serde::{Deserialize, Serialize};
+use bfg_core::decider::MarketInfo;
 
 pub mod errors;
 pub mod realtime;
@@ -35,27 +37,13 @@ pub struct SessionState {
     account: String,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectionDetails {
     pub username: String,
     pub password: String,
     pub api_key: String,
     pub account: String,
     pub base_url: String,
-    pub epic: String,
-}
-
-impl ConnectionDetails {
-    pub fn from_env() -> Self {
-        Self {
-            username: env::var("IG_USER").expect("IG_USER not set"),
-            password: env::var("IG_PASSWORD").expect("IG_PASSWORD not set"),
-            api_key: env::var("IG_APIKEY").expect("IG_API_KEY not set"),
-            base_url: env::var("IG_BASEURL").expect("IG_BASEURL not set"),
-            account: env::var("IG_ACCOUNT").expect("IG_ACCOUNT not set"),
-            epic: env::var("EPIC").expect("EPIC not set"),
-        }
-    }
 }
 
 // TODO improve with type sessions so that session is avaliable only in the correct states.
@@ -67,16 +55,16 @@ pub struct IgBrokerageApi {
 }
 
 impl IgBrokerageApi {
-    pub async fn new(connection_details: ConnectionDetails, tx_out: Sender<RealtimeEvent>) -> Self {
+    pub async fn new(connection_details: ConnectionDetails, market_infos: Vec<MarketInfo>, tx_out: Sender<RealtimeEvent>) -> Self {
         let session = Arc::new(Mutex::new(SessionState::default()));
 
         // Setup a session with rest client and make sure stream has proper connection details
-        let disconnected_rest = IgRestClient::new(Arc::clone(&session), connection_details);
+        let disconnected_rest = IgRestClient::new(Arc::clone(&session), connection_details.clone());
         let connected_rest = disconnected_rest.create_session().await.unwrap();
 
         // Connect to stream and setup subscriptions
         let stream = IgStreamClient::new(Arc::clone(&session), tx_out);
-        stream.start().await.unwrap();
+        stream.start(connection_details, market_infos).await.unwrap();
 
         Self {
             _session: session,

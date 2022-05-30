@@ -96,7 +96,12 @@ pub fn draw_results_view<'a>(views: &Vec<TradeResultView>) -> Table<'a> {
 
     for view in views {
         let entry_slippage = (view.wanted_entry_level - view.actual_entry_level).abs();
-        let pnl_pips = (view.actual_entry_level - view.exit_level).abs();
+        let pnl_pips;
+        if view.reference.contains("LONG") {
+            pnl_pips = view.exit_level - view.actual_entry_level;
+        } else {
+            pnl_pips = view.actual_entry_level - view.exit_level;
+        }
         let row = Row::new(vec![
             Cell::from(Span::styled(entry_slippage.to_string(), row_style)),
             Cell::from(Span::styled(pnl_pips.to_string(), row_style)),
@@ -200,7 +205,7 @@ pub fn draw_system_view<'a>(view: &SystemView) -> Paragraph<'a> {
     let status = format!("System Status: {}", view.state);
     let mut spans = vec![];
     for order in view.orders.iter() {
-        let text = format!(" - {} {}", order.reference, order.state);
+        let text = format!(" - {}: {}", order.reference, order.state);
         let span = Spans::from(Span::raw(text));
         spans.push(span);
     }

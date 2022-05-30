@@ -1,0 +1,73 @@
+use std::str::FromStr;
+use chrono::{NaiveDate, NaiveTime};
+use bfg_ig::models::{ConnectionDetails, MarketInfo};
+use serde::{Deserialize, Serialize};
+use tokio::fs;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct InternalConfig {
+    pub connection_details: ConnectionDetails,
+    pub epics: Vec<InternalMarketInfo>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InternalMarketInfo {
+    pub epic: String,
+    pub expiry: String,
+    pub name: String,
+    pub currency: String,
+    pub min_stop_distance: u8,
+    pub min_lot_size: u8,
+    pub min_step_size: u8,
+    pub open_time: String,
+    pub close_time: String,
+    pub start_fetch_data: String,
+    pub utc_close_working_order: String,
+    pub non_trading_days: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct BfgConfig {
+    pub connection_details: ConnectionDetails,
+    pub epics: Vec<MarketInfo>,
+}
+
+impl BfgConfig {
+    pub async fn new() -> Self {
+        let data = fs::read_to_string("./config.json").await.expect("Unable to read file");
+        let json: InternalConfig = serde_json::from_str(&data)
+            .expect("JSON is not the correct format");
+        Self {
+            connection_details: json.connection_details,
+            epics: json.epics.iter().cloned().map(|v| v.into()).collect(),
+        }
+    }
+}
+
+impl From<InternalMarketInfo> for MarketInfo {
+    fn from(val: InternalMarketInfo) -> Self {
+        MarketInfo {
+            epic: val.epic,
+            expiry: val.expiry,
+            name: val.name,
+            currency: val.currency,
+            min_stop_distance: val.min_stop_distance,
+            min_lot_size: val.min_lot_size,
+            min_step_size: val.min_step_size,
+            open_time: NaiveTime::from_str(val.open_time.as_str()).expect("Failed to parse open_time"),
+            close_time: NaiveTime::from_str(val.close_time.as_str()).expect("Failed to parse close_time"),
+            start_fetch_data: NaiveTime::from_str(val.start_fetch_data.as_str()).expect("Failed to parse start_fetch_data"),
+            utc_close_working_order: NaiveTime::from_str(val.utc_close_working_order.as_str()).expect("Failed to parse utc_close_working_order"),
+            non_trading_days: val.non_trading_days.iter().map(|i| NaiveDate::from_str(i).expect("Failed to parse non_trading_days")).collect(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::BfgConfig;
+
+    #[tokio::test]
+    async fn read() {
+        let conf = BfgConfig::new().await;
+    }
+}

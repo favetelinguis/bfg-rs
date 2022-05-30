@@ -1,8 +1,10 @@
 // TODO should probable use reexports more instead of copy paste structs in the structure dont diverge
 pub use ig_brokerage_adapter::ConnectionDetails;
+pub use bfg_core::decider::MarketInfo;
 
 #[derive(Default, Debug, Clone)]
 pub struct MarketView{
+    pub epic: String,
     pub bid: Option<f64>,
     pub ask: Option<f64>,
     pub market_delay: Option<usize>,
@@ -31,6 +33,7 @@ pub struct TradeResultView {
     pub exit_time: String,
     pub exit_level: f64,
     pub reference: String,
+    pub epic: String,
 }
 
 #[derive(Debug, Clone, Default)]

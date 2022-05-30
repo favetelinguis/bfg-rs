@@ -9,6 +9,9 @@ use log::LevelFilter;
 use tokio::select;
 use bfg_ig::{BfgIg, IgEvent};
 use bfg_ig::models::ConnectionDetails;
+use crate::config::BfgConfig;
+
+mod config;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -39,8 +42,10 @@ async fn main() -> Result<()> {
 
     // Run Trading system
     let trade_system = tokio::spawn(async move {
+        // Read config
+        let config = BfgConfig::new().await;
         // TODO BfgIg should prob just be a function
-        let _ = BfgIg::new(ConnectionDetails::from_env(), ig_tx);
+        let _ = BfgIg::new(config.connection_details, config.epics, ig_tx);
         while let Some(event) = tui_rx.recv().await {
             let mut gui = copy_gui_state_system.write().await;
             match event {

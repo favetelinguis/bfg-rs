@@ -1,4 +1,4 @@
-use bfg_core::decider::{dax_system, Command, Event, OrderEvent, TradeResult};
+use bfg_core::decider::{dax_system, Command, Event, OrderEvent, TradeResult, MarketInfo};
 use bfg_core::models::{OhlcPrice, OrderReference, Price};
 use chrono::NaiveTime;
 use ig_brokerage_adapter::realtime::models::{AccountUpdate, DealStatus, MarketState, MarketUpdate, OpenPositionUpdate, OpuStatus, PositionStatus, TradeConfirmationUpdate};
@@ -11,6 +11,7 @@ use std::str::FromStr;
 use tokio::sync::mpsc::Sender;
 use bfg_core::decider::order::WorkingOrder;
 use bfg_core::decider::system::{System};
+use ig_brokerage_adapter::errors::BrokerageError;
 use crate::models::{AccountView, MarketView, ConnectionInformationView, TradeResultView};
 
 pub mod models;
@@ -27,6 +28,7 @@ pub enum IgEvent {
 #[derive(Debug, Default)]
 pub struct SystemView {
     pub state: String,
+    pub epic: String,
     pub opening_range_high_ask: Option<f64>,
     pub opening_range_high_bid: Option<f64>,
     pub opening_range_low_ask: Option<f64>,
@@ -59,6 +61,7 @@ impl TradeResultsCache {
                 exit_time: tr.exit_time.to_string(),
                 exit_level: tr.exit_level,
                 reference: format!("{:?}", tr.reference),
+                epic: tr.epic.clone(),
             }).collect();
         IgEvent::TradesResultsView(views)
     }
@@ -149,10 +152,11 @@ pub struct BfgIg {} // TODO why use a struct just spawn in a function
 impl BfgIg {
     /// Spawns a new system and handles all the events from brokerage, system generates Commands that are
     /// executed hare also, ig_tx send back updates for the GUI to render
-    pub fn new(connection_details: ConnectionDetails, ig_tx: Sender<IgEvent>) -> Self {
-        let (brokerage_tx, mut ig_rx) = tokio::sync::mpsc::channel::<RealtimeEvent>(100);
+    pub fn new(connection_details: ConnectionDetails, market_infos: Vec<MarketInfo>, ig_tx: Sender<IgEvent>) -> Self {
+        let (brokerage_tx, mut ig_rx) = tokio::sync::mpsc::channel::<RealtimeEvent>(10);
         tokio::spawn(async move {
-            let brokerage = IgBrokerageApi::new(connection_details, brokerage_tx).await;
+            let brokerage = IgBrokerageApi::new(connection_details, market_infos, brokerage_tx).await;
+            // TODO create SystemManager that uses market_infos then remove dax_system
             let mut system_cache = dax_system();
             let mut market_cache = MarketCache::default();
             let mut trade_confirmation_cache = TradeConfirmationCache::default();
@@ -177,7 +181,7 @@ impl BfgIg {
                         ig_tx.send(account_cache.get_current_view()).await.expect("Sending message failure");
                         None
                     },
-                    RealtimeEvent::WorkingOrderUpdate(_) => None, // Waiting for reply if WOU is depricated
+                    RealtimeEvent::WorkingOrderUpdate(_) => None, // Waiting for reply if WOU is deprecated
                     RealtimeEvent::StreamStatus(status) => {
                         ig_tx.send(IgEvent::ConnectionView(ConnectionInformationView {
                             stream_status: status
@@ -197,54 +201,54 @@ impl BfgIg {
                         system_cache = new_system;
                         for c in commands {
                             let more_events = match c {
-                                Command::FetchData { start, end } => {
+                                Command::FetchData {epic, start, duration } => {
                                     info!("Executing: FetchData");
-                                    if let Ok(result) = brokerage
+                                    match brokerage
                                         .rest
-                                        .fetch_data(start.as_str(), end.as_str())
+                                        .fetch_data(epic.as_str(), start, duration)
                                         .await
                                     {
+                                        Ok(result) =>
                                         vec![Event::Data {
                                             prices: extract_prices(result),
-                                        }]
-                                    } else {
-                                        vec![Event::Error(
-                                            "Rest failure when fetching data".to_string(),
-                                        )]
+                                        }],
+                                        Err(BrokerageError(error)) =>
+                                        vec![Event::Error(error)]
                                     }
                                 }
                                 Command::CreateWorkingOrder {
                                     direction,
                                     price,
                                     reference,
+                                    market_info,
+                                    target_price,
                                 } => {
                                     info!("Executing: CreateWorkingOrder");
-                                    if let Err(response) = brokerage
+                                    if let Err(BrokerageError(error)) = brokerage
                                         .rest
-                                        .open_working_order(direction, price, format!("{:?}", reference).as_str())
+                                        .open_working_order(direction, price, format!("{:?}", reference).as_str(), market_info, target_price)
                                         .await
                                     {
-                                        vec![Event::Error(
-                                            "Rest failure when creating order".to_string(),
+                                        vec![Event::Error(error
                                         )]
                                     } else {
                                         vec![]
                                     }
                                 }
-                                Command::UpdatePosition { deal_id, level } => {
+                                Command::UpdatePosition { deal_id, level, trailing_stop_distance, target_level } => {
                                     info!("Executing: UpdatePosition");
-                                    if let Err(err) = brokerage
+                                    if let Err(BrokerageError(error)) = brokerage
                                         .rest
-                                        .edit_position(deal_id.as_str(), level)
+                                        .edit_position(deal_id.as_str(), level, trailing_stop_distance, target_level)
                                         .await
                                     {
-                                        vec![Event::Error(
-                                            "Rest failure when updating position".to_string(),
+                                        vec![Event::Error(error
                                         )]
                                     } else {
                                         vec![]
                                     }
                                 }
+                                /// Use the provided reference and the order cache to find order id to cancel
                                 Command::CancelWorkingOrder {
                                     ref reference_to_cancel,
                                 } => {
@@ -252,14 +256,12 @@ impl BfgIg {
                                     if let Some(deal_id) =
                                         trade_confirmation_cache.get_deal_id(reference_to_cancel)
                                     {
-                                        if let Err(err) = brokerage
+                                        if let Err(BrokerageError(error)) = brokerage
                                             .rest
                                             .delete_working_order(deal_id.as_str())
                                             .await
                                         {
-                                            vec![Event::Error(
-                                                "Rest failure when canceling working order"
-                                                    .to_string(),
+                                            vec![Event::Error(error
                                             )]
                                         } else {
                                             vec![]
@@ -291,34 +293,39 @@ impl BfgIg {
 
 fn get_current_system_view(system: &System) -> IgEvent {
     let view = match system {
-        System::Setup(_) => SystemView {
+        System::Setup(val) => SystemView {
             state: String::from("Setup"),
+            epic: val.market_info.epic.clone(),
             ..Default::default()
         },
-        System::AwaitData(_) => SystemView {
+        System::AwaitData(val) => SystemView {
             state: String::from("AwaitData"),
+            epic: val.market_info.epic.clone(),
             ..Default::default()
         },
-        System::DecideOrderPlacement(system) =>
+        System::DecideOrderPlacement(val) =>
             SystemView {
                 state: String::from("DecideOrderPlacement"),
-                opening_range_high_ask: Some(system.state.opening_range.high_ask),
-                opening_range_high_bid: Some(system.state.opening_range.high_bid),
-                opening_range_low_ask: Some(system.state.opening_range.low_ask),
-                opening_range_low_bid: Some(system.state.opening_range.low_bid),
+                opening_range_high_ask: Some(val.state.opening_range.high_ask),
+                opening_range_high_bid: Some(val.state.opening_range.high_bid),
+                opening_range_low_ask: Some(val.state.opening_range.low_ask),
+                opening_range_low_bid: Some(val.state.opening_range.low_bid),
+                epic: val.market_info.epic.clone(),
                 ..Default::default()
             },
-        System::ManageOrders(system) => SystemView {
+        System::ManageOrders(val) => SystemView {
             state: String::from("ManageOrders"),
-            opening_range_high_ask: Some(system.state.opening_range.high_ask),
-            opening_range_high_bid: Some(system.state.opening_range.high_bid),
-            opening_range_low_ask: Some(system.state.opening_range.low_ask),
-            opening_range_low_bid: Some(system.state.opening_range.low_bid),
-            orders: create_order_view(system.state.order_manager.get_orders()),
+            opening_range_high_ask: Some(val.state.opening_range.high_ask),
+            opening_range_high_bid: Some(val.state.opening_range.high_bid),
+            opening_range_low_ask: Some(val.state.opening_range.low_ask),
+            opening_range_low_bid: Some(val.state.opening_range.low_bid),
+            orders: create_order_view(val.state.order_manager.get_orders()),
+            epic: val.market_info.epic.clone(),
             ..Default::default()
         },
-        System::Error(_) => SystemView {
+        System::Error(val) => SystemView {
             state: String::from("Error"),
+            epic: val.market_info.epic.clone(),
             ..Default::default()
         },
     };
@@ -328,8 +335,8 @@ fn get_current_system_view(system: &System) -> IgEvent {
 fn create_order_view(orders: &HashMap<OrderReference, WorkingOrder>) -> Vec<OrderView> {
     orders.iter()
         .map(|(k, v)| OrderView {
-            state: format!("{:?}", k),
-            reference: v.to_string(),
+            reference: format!("{:?}", k),
+            state: v.to_string(),
         }).collect()
 }
 
@@ -359,6 +366,7 @@ fn extract_prices(res: FetchDataResponse) -> Vec<OhlcPrice> {
 
 #[derive(Clone, Debug, Default)]
 pub struct MarketCache {
+    pub epic: String,
     pub bid: Option<f64>,
     pub ask: Option<f64>,
     pub market_delay: Option<usize>,
@@ -369,6 +377,7 @@ pub struct MarketCache {
 impl MarketCache {
     fn get_current_view(&self) -> IgEvent {
         IgEvent::MarketView(MarketView {
+            epic: self.epic.clone(),
             bid: self.bid,
             ask: self.ask,
             market_delay: self.market_delay,
@@ -450,17 +459,10 @@ impl TradeConfirmationCache {
                     level: Some(level),
                     status: Some(PositionStatus::OPEN),
                     deal_status: DealStatus::ACCEPTED,
+                    deal_id,
                     ..
                 } => Some(Event::Order(
-                    OrderEvent::ConfirmationOpenAccepted { level: *level },
-                    deal_reference.clone(),
-                )),
-                TradeConfirmationUpdate {
-                    status: Some(PositionStatus::OPEN),
-                    deal_status: DealStatus::REJECTED,
-                    ..
-                } => Some(Event::Order(
-                    OrderEvent::ConfirmationOpenRejected,
+                    OrderEvent::ConfirmationOpenAccepted { level: *level, deal_id: deal_id.clone() },
                     deal_reference.clone(),
                 )),
                 TradeConfirmationUpdate {
@@ -472,11 +474,10 @@ impl TradeConfirmationCache {
                     deal_reference.clone(),
                 )),
                 TradeConfirmationUpdate {
-                    status: Some(PositionStatus::AMENDED),
                     deal_status: DealStatus::REJECTED,
                     ..
                 } => Some(Event::Order(
-                    OrderEvent::ConfirmationAmendedRejected,
+                    OrderEvent::ConfirmationRejection,
                     deal_reference.clone(),
                 )),
                 TradeConfirmationUpdate {
@@ -485,14 +486,6 @@ impl TradeConfirmationCache {
                     ..
                 } => Some(Event::Order(
                     OrderEvent::ConfirmationDeleteAccepted,
-                    deal_reference.clone(),
-                )),
-                TradeConfirmationUpdate {
-                    status: Some(PositionStatus::DELETED),
-                    deal_status: DealStatus::REJECTED,
-                    ..
-                } => Some(Event::Order(
-                    OrderEvent::ConfirmationDeleteRejected,
                     deal_reference.clone(),
                 )),
                 _ => None,

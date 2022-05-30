@@ -1,6 +1,7 @@
 use crate::realtime::models::{AccountUpdate, MarketState, OpenPositionUpdate, TradeConfirmationUpdate, WorkingOrderUpdate};
 use std::borrow::BorrowMut;
 use std::str::FromStr;
+use log::warn;
 use crate::MarketUpdate;
 
 type MarketState2 = (

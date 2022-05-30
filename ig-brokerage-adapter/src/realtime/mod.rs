@@ -2,7 +2,7 @@ use crate::realtime::models::{Mode, TlcpRequest, TlcpResponse};
 use crate::realtime::notifications::{
     parse_account_update, parse_market_update, parse_trade_update,
 };
-use crate::{BrokerageError, RealtimeEvent, RestDetails, SessionState};
+use crate::{BrokerageError, ConnectionDetails, RealtimeEvent, RestDetails, SessionState};
 use futures_util::{SinkExt, StreamExt};
 use http::HeaderValue;
 use log::{error, info, warn};
@@ -13,6 +13,7 @@ use tokio::sync::Mutex;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use url::Url;
+use bfg_core::decider::MarketInfo;
 
 pub mod models;
 pub mod notifications;
@@ -30,7 +31,7 @@ impl IgStreamClient {
         Self { session, tx }
     }
 
-    pub async fn start(&self) -> Result<(), BrokerageError> {
+    pub async fn start(&self, connection_details: ConnectionDetails, markets: Vec<MarketInfo>) -> Result<(), BrokerageError> {
         let SessionState {
             ref xst,
             ref cst,
@@ -77,24 +78,7 @@ impl IgStreamClient {
                                 .unwrap();
                             cloned_ws_tx
                                 .send(Tlcp(TlcpRequest::Subscribe {
-                                    item: "MARKET:IX.D.DAX.IFMM.IP".to_string(),
-                                    fields: vec![
-                                        "BID".to_string(),
-                                        "OFFER".to_string(),
-                                        "MARKET_DELAY".to_string(),
-                                        "MARKET_STATE".to_string(),
-                                        "UPDATE_TIME".to_string(),
-                                    ],
-                                    mode: Mode::Merge,
-                                    req_id: 1,
-                                    sub_id: 1,
-                                    session_id: session_id.clone(),
-                                }))
-                                .await
-                                .unwrap(); // MARKET
-                            cloned_ws_tx
-                                .send(Tlcp(TlcpRequest::Subscribe {
-                                    item: "ACCOUNT:ZQVBB".to_string(),
+                                    item: format!("ACCOUNT:{}", connection_details.account.clone()),
                                     fields: vec![
                                         "PNL".to_string(),
                                         "DEPOSIT".to_string(),
@@ -110,27 +94,48 @@ impl IgStreamClient {
                                         "EQUITY_USED".to_string(),
                                     ],
                                     mode: Mode::Merge,
-                                    req_id: 2,
-                                    sub_id: 2,
+                                    req_id: 1,
+                                    sub_id: 1,
                                     session_id: session_id.clone(),
                                 }))
                                 .await
                                 .unwrap(); // ACCOUNT
                             cloned_ws_tx
                                 .send(Tlcp(TlcpRequest::Subscribe {
-                                    item: "TRADE:ZQVBB".to_string(),
+                                    item: format!("TRADE:{}", connection_details.account.clone()),
                                     fields: vec![
                                         "CONFIRMS".to_string(),
                                         "OPU".to_string(),
                                         "WOU".to_string(),
                                     ],
                                     mode: Mode::Distinct,
-                                    req_id: 3,
-                                    sub_id: 3,
+                                    req_id: 2,
+                                    sub_id: 2,
                                     session_id: session_id.clone(),
                                 }))
                                 .await
                                 .unwrap(); // TRADE
+                            let mut market_stream_id = 3;
+                            for market in markets.iter() {
+                                cloned_ws_tx
+                                    .send(Tlcp(TlcpRequest::Subscribe {
+                                        item: format!("MARKET:{}", market.epic.clone()),
+                                        fields: vec![
+                                            "BID".to_string(),
+                                            "OFFER".to_string(),
+                                            "MARKET_DELAY".to_string(),
+                                            "MARKET_STATE".to_string(),
+                                            "UPDATE_TIME".to_string(),
+                                        ],
+                                        mode: Mode::Merge,
+                                        req_id: market_stream_id,
+                                        sub_id: market_stream_id,
+                                        session_id: session_id.clone(),
+                                    }))
+                                    .await
+                                    .unwrap(); // MARKET
+                                market_stream_id += 1;
+                            }
                         }
                         TlcpResponse::U {
                             ref fields_values,
@@ -138,18 +143,12 @@ impl IgStreamClient {
                             ..
                         } => match subscription_id {
                             1 => cloned_event_tx
-                                .send(RealtimeEvent::MarketEvent(parse_market_update(
-                                    fields_values,
-                                )))
-                                .await
-                                .unwrap(),
-                            2 => cloned_event_tx
                                 .send(RealtimeEvent::AccountEvent(parse_account_update(
                                     fields_values,
                                 )))
                                 .await
                                 .unwrap(),
-                            3 => {
+                            2 => {
                                 // Simpler since distinct mode and only one value so no need to split on |
                                 let (confirms, open_position_updates, working_orders_updates) =
                                     parse_trade_update(fields_values);
@@ -177,7 +176,13 @@ impl IgStreamClient {
                                         .unwrap()
                                 }
                             }
-                            msg => error!("Unsupported update: {:?}", msg),
+                            id if id > 2 => cloned_event_tx
+                                .send(RealtimeEvent::MarketEvent(parse_market_update(
+                                    fields_values,
+                                )))
+                                .await
+                                .unwrap(),
+                            id => error!("Unsupported update: {:?}", id),
                         },
                         TlcpResponse::LOOP { .. } => panic!("Session rebinding not supported"),
                         msg => error!("Unhandled WS event: {:?}", msg),
@@ -194,7 +199,7 @@ impl IgStreamClient {
                 client_token: cst.clone(),
             }))
             .await
-            .map_err(|_| BrokerageError::CoreBrokerageError)?;
+            .map_err(|e| BrokerageError(e.to_string()))?;
         return Ok(());
     }
 }

@@ -1,13 +1,10 @@
 use std::borrow::{Borrow, BorrowMut};
-use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use crate::decider::order::WorkingOrder::{PositionExited, WOCloseAccepted, WOOpenRejected};
 use crate::decider::order::{WorkingOrder, WorkingOrderFactory};
 use crate::decider::{Command, Event, MarketInfo};
 use crate::models::OhlcPrice;
 use crate::models::{Direction, OrderReference};
-use chrono::{NaiveDateTime, NaiveTime, Utc};
-use log::Level::Debug;
+use chrono::{Duration, NaiveDateTime, Utc};
 
 #[derive(Debug)]
 pub struct SystemMachine<S> {
@@ -141,7 +138,7 @@ impl From<SystemMachine<ManageOrders>> for SystemMachine<Error> {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct OpeningRange {
     pub high_ask: f64,
     pub high_bid: f64,
@@ -179,10 +176,13 @@ impl System {
                 Event::Market {
                     ref update_time, ..
                 },
-            ) if val.market_info.is_inside_trading_hours(update_time) => (
-                System::AwaitData(val.into()),
-                vec![create_fetch_data_command()],
-            ),
+            ) if val.market_info.is_inside_trading_hours(update_time) => {
+                let command = create_fetch_data_command(val.market_info.borrow());
+                (
+                    System::AwaitData(val.into()),
+                    vec![command],
+                )
+            },
             // AwaitData -> DecideOrderPlacement []
             (System::AwaitData(val), Event::Data { prices, .. }) if !prices.is_empty() => {
                 let new_state = create_decide_order_placement_from_opening_range(val, prices);
@@ -207,19 +207,23 @@ impl System {
                     ..
                 },
             ) if val.market_info.is_inside_trading_hours(update_time)
-                && is_price_over(&val.state.opening_range, *bid, *ask) =>
+                && is_price_over(val.market_info.min_step_size, &val.state.opening_range, *bid, *ask) =>
             {
                 let command = Command::CreateWorkingOrder {
                     direction: Direction::BUY,
                     price: val.state.opening_range.high_ask,
                     reference: OrderReference::OVER_LONG,
+                    market_info: val.market_info.clone(),
+                    target_price: None,
                 };
-                let mut new_system: SystemMachine<ManageOrders >= val.into();
-                new_system.state.order_manager.create_order(OrderReference::OVER_LONG);
+                let market_info_clone = val.market_info.clone(); // TODO should save a reference to market_info not clone it
+                let opening_range_clone = val.state.opening_range.clone(); // TODO should save a reference to market_info not clone it
+                let mut new_system: SystemMachine<ManageOrders> = val.into();
+                new_system.state.order_manager.create_order(OrderReference::OVER_LONG, market_info_clone, opening_range_clone);
                 (
                     System::ManageOrders(new_system),
                     vec![command],
-                )
+                    )
             }
             // DecideOrderPlacement -> ManageOrders [CreateWorkingOrder, CreateWorkingOrder]
             (
@@ -231,23 +235,31 @@ impl System {
                     ..
                 },
             ) if val.market_info.is_inside_trading_hours(update_time)
-                && is_price_between(&val.state.opening_range, *bid, *ask) =>
+                && is_price_between(val.market_info.min_step_size, &val.state.opening_range, *bid, *ask) =>
             {
                 let commands = vec![
                     Command::CreateWorkingOrder {
                         direction: Direction::BUY,
                         price: val.state.opening_range.low_ask,
                         reference: OrderReference::BETWEEN_LONG,
+                        market_info: val.market_info.clone(),
+                        target_price: Some(val.state.opening_range.high_bid),
                     },
                     Command::CreateWorkingOrder {
                         direction: Direction::SELL,
                         price: val.state.opening_range.high_bid,
                         reference: OrderReference::BETWEEN_SHORT,
+                        market_info: val.market_info.clone(),
+                        target_price: Some(val.state.opening_range.low_ask),
                     },
                 ];
-                let mut new_system: SystemMachine<ManageOrders >= val.into();
-                new_system.state.order_manager.create_order(OrderReference::BETWEEN_LONG);
-                new_system.state.order_manager.create_order(OrderReference::BETWEEN_SHORT);
+                let market_info_clone1 = val.market_info.clone(); // TODO should save a reference to market_info not clone it
+                let market_info_clone2 = val.market_info.clone(); // TODO should save a reference to market_info not clone it
+                let opening_range_clone1 = val.state.opening_range.clone(); // TODO should save a reference to market_info not clone it
+                let opening_range_clone2 = val.state.opening_range.clone(); // TODO should save a reference to market_info not clone it
+                let mut new_system: SystemMachine<ManageOrders>= val.into();
+                new_system.state.order_manager.create_order(OrderReference::BETWEEN_LONG, market_info_clone1, opening_range_clone1);
+                new_system.state.order_manager.create_order(OrderReference::BETWEEN_SHORT, market_info_clone2, opening_range_clone2);
                 (
                     System::ManageOrders(new_system),
                     commands,
@@ -263,15 +275,19 @@ impl System {
                     ..
                 },
             ) if val.market_info.is_inside_trading_hours(update_time)
-                && is_price_under(&val.state.opening_range, *bid, *ask) =>
+                && is_price_under(val.market_info.min_step_size, &val.state.opening_range, *bid, *ask) =>
             {
                 let command = Command::CreateWorkingOrder {
                     direction: Direction::SELL,
                     price: val.state.opening_range.low_bid,
                     reference: OrderReference::UNDER_SHORT,
+                    market_info: val.market_info.clone(),
+                    target_price: None,
                 };
+                let market_info_clone = val.market_info.clone(); // TODO should save a reference to market_info not clone it
+                let opening_range_clone = val.state.opening_range.clone(); // TODO should save a reference to market_info not clone it
                 let mut new_system: SystemMachine<ManageOrders >= val.into();
-                new_system.state.order_manager.create_order(OrderReference::UNDER_SHORT);
+                new_system.state.order_manager.create_order(OrderReference::UNDER_SHORT, market_info_clone, opening_range_clone);
                 (
                     System::ManageOrders(new_system),
                     vec![command],
@@ -337,40 +353,37 @@ fn create_decide_order_placement_from_opening_range(
 }
 
 /// Get the data for the first open minute
-fn create_fetch_data_command() -> Command {
+fn create_fetch_data_command(market_info: &MarketInfo) -> Command {
     let now = Utc::now();
-    let start_time = NaiveTime::from_hms(9, 0, 0);
-    let end_time = NaiveTime::from_hms(9, 1, 0);
-    let dt_start = NaiveDateTime::new(now.naive_utc().date(), start_time);
-    let dt_start_format = dt_start.format("%Y-%m-%d %H:%M:%S").to_string();
-    let dt_end = NaiveDateTime::new(now.naive_utc().date(), end_time);
-    let dt_end_format = dt_end.format("%Y-%m-%d %H:%M:%S").to_string();
+    let dt_start = NaiveDateTime::new(now.naive_utc().date(), market_info.start_fetch_data);
     Command::FetchData {
-        start: dt_start_format,
-        end: dt_end_format,
+        epic: market_info.epic.clone(),
+        start: dt_start,
+        duration: Duration::minutes(1),
     }
 }
 
-fn is_price_over(opening_range: &OpeningRange, bid: f64, ask: f64) -> bool {
+fn is_price_over(min_step_size: u8, opening_range: &OpeningRange, bid: f64, ask: f64) -> bool {
     let level = (bid + ask) / 2.;
-    let buffer = 10.;
+    let buffer: f64 = min_step_size as f64 * 5.;
     level > (opening_range.get_middle_price_high() + buffer)
 }
 
 /// Opening range must be 15pips to ever trigger between
 /// The buffer will always leave 4 pip in the middle where we will trigger
-fn is_price_between(opening_range: &OpeningRange, bid: f64, ask: f64) -> bool {
+fn is_price_between(min_step_size: u8, opening_range: &OpeningRange, bid: f64, ask: f64) -> bool {
     let level = (bid + ask) / 2.;
-    let buffer = opening_range.range_size() / 2. - 2.;
-    let or_large_enough = opening_range.range_size() >= 15.;
+    // let buffer = opening_range.range_size() / 2. - 2.; // Old
+    let buffer = 5.;
+    let or_large_enough = opening_range.range_size() >= (min_step_size as f64 * 15.);
     let price_between = (level < (opening_range.get_middle_price_high() - buffer))
         && (level > (opening_range.get_middle_price_low() + buffer));
     or_large_enough && price_between
 }
 
-fn is_price_under(opening_range: &OpeningRange, bid: f64, ask: f64) -> bool {
+fn is_price_under(min_step_size: u8, opening_range: &OpeningRange, bid: f64, ask: f64) -> bool {
     let level = (bid + ask) / 2.;
-    let buffer = 10.;
+    let buffer = min_step_size as f64 * 5.;
     level < (opening_range.get_middle_price_low() - buffer)
 }
 
@@ -388,8 +401,8 @@ pub struct OrderManager {
 }
 
 impl OrderManager {
-    fn create_order(&mut self, reference: OrderReference) {
-        self.orders.insert(reference, WorkingOrderFactory::new());
+    fn create_order(&mut self, reference: OrderReference, market_info: MarketInfo, opening_range: OpeningRange) {
+        self.orders.insert(reference, WorkingOrderFactory::new(market_info, opening_range));
     }
 
     /// An event that only affects a single order
@@ -514,7 +527,7 @@ mod tests {
 
     fn e_o_confirmation_open_accepted(reference: OrderReference) -> Event {
         Event::Order(
-            OrderEvent::ConfirmationOpenAccepted { level: 0.0 },
+            OrderEvent::ConfirmationOpenAccepted { level: 0.0, deal_id: "".to_string() },
             reference,
         )
     }

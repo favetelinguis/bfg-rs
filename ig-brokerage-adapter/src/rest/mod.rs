@@ -1,4 +1,3 @@
-use crate::errors::ApiLayerError;
 use crate::rest::models::{
     AccessTokenResponse, ClosePositionRequest, CreateDeletePositionResponse, CreateSessionRequest,
     CreateSessionRequestV2, CreateSessionResponse, CreateSessionResponseV2,
@@ -7,13 +6,16 @@ use crate::rest::models::{
 };
 use crate::{BrokerageError, ConnectionDetails, SessionState};
 use bfg_core::models::Direction;
-use log::{error, info, warn};
 use reqwest::header::{HeaderMap, ACCEPT, CONTENT_TYPE};
 use reqwest::Client;
 use std::borrow::Borrow;
 use std::marker::PhantomData;
+use std::ops::Add;
 use std::sync::Arc;
+use chrono::{Duration, NaiveDateTime};
+use log::warn;
 use tokio::sync::Mutex;
+use bfg_core::decider::MarketInfo;
 
 pub mod models;
 
@@ -60,15 +62,11 @@ impl IgRestClient<NoSession> {
             })
             .send()
             .await
-            .map_err(|e| BrokerageError::CoreBrokerageError)?;
+            .map_err(|e| BrokerageError(e.to_string()))?;
         if !res.status().is_success() {
             let status = res.status().as_u16();
             let message = res.text().await.unwrap();
-            //.json::<ApiResponse>().unwrap();
-            error!("Failed to create session with reason: {}", message.clone());
-
-            let err = ApiLayerError { status, message };
-            return Err(BrokerageError::CoreBrokerageError);
+            return Err(BrokerageError(format!("create_session failure with status: {} message: {}", status, message)));
         }
 
         // xst och cst is good for 12h and will reset on each api call for another 12h
@@ -84,7 +82,7 @@ impl IgRestClient<NoSession> {
         let res = res
             .json::<CreateSessionResponseV2>()
             .await
-            .map_err(|e| BrokerageError::CoreBrokerageError)?;
+            .map_err(|e| BrokerageError(e.to_string()))?;
 
         // Set the shared session after login
         *self.session.lock().await = SessionState {
@@ -106,9 +104,13 @@ impl IgRestClient<NoSession> {
 impl IgRestClient<HasSession> {
     pub async fn fetch_data(
         &self,
-        start: &str,
-        end: &str,
+        epic: &str,
+        start: NaiveDateTime,
+        duration: Duration,
     ) -> Result<FetchDataResponse, BrokerageError> {
+        let dt_start_format = start.format("%Y-%m-%d %H:%M:%S").to_string();
+        let dt_end = start.add(duration);
+        let dt_end_format = dt_end.format("%Y-%m-%d %H:%M:%S").to_string();
         let SessionState {
             ref xst, ref cst, ..
         } = &*self.session.lock().await;
@@ -125,7 +127,7 @@ impl IgRestClient<HasSession> {
         headers.insert("X-SECURITY-TOKEN", xst.parse().unwrap());
         headers.insert("CST", cst.parse().unwrap());
         headers.insert("Version", "2".parse().unwrap());
-        let resource = format!("prices/IX.D.DAX.IFMM.IP/MINUTE/{start}/{end}");
+        let resource = format!("prices/{epic}/MINUTE/{dt_start_format}/{dt_end_format}");
         let url = format!("{}{}", self.connection_details.base_url, resource);
         let res = self
             .client
@@ -133,21 +135,17 @@ impl IgRestClient<HasSession> {
             .headers(headers)
             .send()
             .await
-            .map_err(|e| BrokerageError::CoreBrokerageError)?;
+            .map_err(|e| BrokerageError(e.to_string()))?;
         if !res.status().is_success() {
             let status = res.status().as_u16();
             let message = res.text().await.unwrap();
-            error!("Failed to get data with reason: {}", message);
-
-            let err = ApiLayerError { status, message };
-            println!("Error {:?}", err);
-            return Err(BrokerageError::CoreBrokerageError);
+            return Err(BrokerageError(format!("fetch_data fail with status: {} message: {}", status, message)));
         }
 
         let res = res
             .json::<FetchDataResponse>()
             .await
-            .map_err(|e| BrokerageError::CoreBrokerageError)?;
+            .map_err(|e| BrokerageError(e.to_string()))?;
 
         return Ok(res);
     }
@@ -157,6 +155,8 @@ impl IgRestClient<HasSession> {
         direction: Direction,
         level: f64,
         deal_reference: &str,
+        market_info: MarketInfo,
+        target_price: Option<f64>,
     ) -> Result<(), BrokerageError> {
         let SessionState { xst, cst, .. } = &*self.session.lock().await;
         let mut headers = HeaderMap::new();
@@ -173,7 +173,7 @@ impl IgRestClient<HasSession> {
         headers.insert("CST", cst.parse().unwrap());
         headers.insert("Version", "2".parse().unwrap());
         let request_body =
-            CreateWorkingOrderRequest::new(direction.clone().into(), level, deal_reference);
+            CreateWorkingOrderRequest::new(direction.clone().into(), level, deal_reference, market_info, target_price);
         let res = self
             .client
             .post(format!(
@@ -184,24 +184,17 @@ impl IgRestClient<HasSession> {
             .json(&request_body)
             .send()
             .await
-            .map_err(|e| BrokerageError::CoreBrokerageError)?;
+            .map_err(|e| BrokerageError(e.to_string()))?;
         if !res.status().is_success() {
             let status = res.status().as_u16();
-            let message = res.text().await.unwrap(); //.json::<ApiResponse>().unwrap();
-            error!("Failed to open position with reason: {}", message.clone());
-
-            let err = ApiLayerError { status, message };
-            println!(
-                "Create working order error {:?} request: {:?}",
-                err, request_body
-            );
-            return Err(BrokerageError::CoreBrokerageError);
+            let message = res.text().await.unwrap();
+            return Err(BrokerageError(format!("open_working_order fail with status: {} message: {}", status, message)));
         }
 
         let res = res
             .json::<CreateDeletePositionResponse>()
             .await
-            .map_err(|e| BrokerageError::CoreBrokerageError)?;
+            .map_err(|e| BrokerageError(e.to_string()))?;
 
         return Ok(());
     }
@@ -233,23 +226,23 @@ impl IgRestClient<HasSession> {
             .headers(headers)
             .send()
             .await
-            .map_err(|e| BrokerageError::CoreBrokerageError)?;
+            .map_err(|e| BrokerageError(e.to_string()))?;
         if !res.status().is_success() {
             let status = res.status().as_u16();
             let message = res.text().await.unwrap();
-            error!(
+            warn!(
                 "Failed to close workingorder for deal id {} with status {} and with reason: {}",
                 deal_id, status, message
             );
 
-            let err = ApiLayerError { status, message };
+            // TODO should not always say ok, only say ok for specific message and code that happen when closing already closed
             return Ok(()); // If i try to close a position that already is closed things crash so i always say ok even if not
         }
 
         let res = res
             .json::<CreateDeletePositionResponse>()
             .await
-            .map_err(|e| BrokerageError::CoreBrokerageError)?;
+            .map_err(|e| BrokerageError(e.to_string()))?;
         return Ok(());
     }
 
@@ -257,6 +250,8 @@ impl IgRestClient<HasSession> {
         &self,
         deal_id: &str,
         stop_level: f64,
+        trailing_stop_distance: u8,
+        target_level: Option<f64>,
     ) -> Result<(), BrokerageError> {
         let SessionState {
             ref xst, ref cst, ..
@@ -281,23 +276,20 @@ impl IgRestClient<HasSession> {
                 self.connection_details.base_url, "positions/otc", deal_id
             ))
             .headers(headers)
-            .json(EditPositionRequest::new(stop_level).borrow())
+            .json(EditPositionRequest::new(stop_level, trailing_stop_distance, target_level).borrow())
             .send()
             .await
-            .map_err(|e| BrokerageError::CoreBrokerageError)?;
+            .map_err(|e| BrokerageError(e.to_string()))?;
         if !res.status().is_success() {
             let status = res.status().as_u16();
-            let message = res.text().await.unwrap(); //.json::<ApiResponse>().unwrap();
-            error!("Failed to open position with reason: {}", message.clone());
-
-            let err = ApiLayerError { status, message };
-            return Err(BrokerageError::CoreBrokerageError);
+            let message = res.text().await.unwrap();
+            return Err(BrokerageError(format!("edit_position fail with status: {} message: {} deal id: {}", status, message, deal_id)));
         }
 
         let res = res
             .json::<CreateDeletePositionResponse>()
             .await
-            .map_err(|e| BrokerageError::CoreBrokerageError)?;
+            .map_err(|e| BrokerageError(e.to_string()))?;
 
         return Ok(());
     }

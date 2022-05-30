@@ -14,3 +14,6 @@ dotenvy = "0.15.1"
 log = "0.4"
 tui-logger = { git = "https://github.com/gin66/tui-logger", rev = "3a3568e2464dddc2205e071234135998342d7f1d" }
 bfg-ig = { path = "../bfg-ig"}
+serde = { version = "1.0.136", features = ["derive"] }
+serde_json = "1.0.79"
+chrono = "0.4"
