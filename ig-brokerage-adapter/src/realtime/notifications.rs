@@ -55,7 +55,7 @@ pub fn parse_trade_update(
     (conf, opu, wou)
 }
 
-pub fn parse_account_update(msg: &str) -> AccountUpdate {
+pub fn parse_account_update(msg: &str, account: String) -> AccountUpdate {
     let mut prev: AccountState = (
         None, None, None, None, None, None, None, None, None, None, None, None,
     );
@@ -103,7 +103,7 @@ pub fn parse_account_update(msg: &str) -> AccountUpdate {
         }
     }
     AccountUpdate {
-        account: None, // Hackish since i never want it updated
+        account,
         pnl: prev.0,
         deposit: prev.1,
         available_cash: prev.2,
@@ -119,7 +119,7 @@ pub fn parse_account_update(msg: &str) -> AccountUpdate {
     }
 }
 
-pub fn parse_market_update(msg: &str) -> MarketUpdate {
+pub fn parse_market_update(msg: &str, epic: String) -> MarketUpdate {
     //"BID" "OFFER" "MARKET_DELAY" "MARKET_STATE" "UPDATE_TIME"
     let mut prev: MarketState2 = (None, None, None, None, None);
     let parts: Vec<&str> = msg.trim().split('|').collect();
@@ -153,6 +153,7 @@ pub fn parse_market_update(msg: &str) -> MarketUpdate {
         }
     }
     MarketUpdate {
+        epic,
         bid: prev.0,
         offer: prev.1,
         market_delay: prev.2,

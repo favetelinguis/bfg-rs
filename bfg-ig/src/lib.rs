@@ -69,7 +69,7 @@ impl TradeResultsCache {
 
 #[derive(Debug, Default)]
 struct AccountCache {
-    account: Option<String>,
+    account: String,
     pnl: Option<f64>,
     deposit: Option<f64>,
     available_cash: Option<f64>,
@@ -86,9 +86,7 @@ struct AccountCache {
 
 impl AccountCache {
     fn update(&mut self, update: AccountUpdate) {
-        if update.account.is_some() {
-            self.account = update.account;
-        }
+        self.account = update.account;
         if update.pnl.is_some() {
             self.pnl= update.pnl;
         }

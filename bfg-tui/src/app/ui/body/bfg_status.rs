@@ -89,6 +89,7 @@ pub fn draw_results_view<'a>(views: &Vec<TradeResultView>) -> Table<'a> {
 
     let mut rows = vec![];
     let headers = Row::new(vec![
+        Cell::from(Span::styled("Epic", header_style)),
         Cell::from(Span::styled("Entry Slippage", header_style)),
         Cell::from(Span::styled("P/L Pips", header_style)),
     ]);
@@ -103,6 +104,7 @@ pub fn draw_results_view<'a>(views: &Vec<TradeResultView>) -> Table<'a> {
             pnl_pips = view.actual_entry_level - view.exit_level;
         }
         let row = Row::new(vec![
+            Cell::from(Span::styled(view.epic.clone(), row_style)),
             Cell::from(Span::styled(entry_slippage.to_string(), row_style)),
             Cell::from(Span::styled(pnl_pips.to_string(), row_style)),
         ]);
@@ -121,7 +123,7 @@ pub fn draw_results_view<'a>(views: &Vec<TradeResultView>) -> Table<'a> {
 }
 
 pub fn draw_account_view<'a>(state: &AccountView) -> Paragraph<'a> {
-    let account = format!("Account: {}", state.account.clone().unwrap_or_default());
+    let account = format!("Account: {}", state.account.clone());
     let pnl = format!(
         "PNL: {}",
         state.pnl.map(|n| n.to_string()).unwrap_or_default()
@@ -225,12 +227,14 @@ pub fn draw_system_view<'a>(view: &SystemView) -> Paragraph<'a> {
         "Opening Range Low Bid: {}",
         view.opening_range_low_bid.unwrap_or_default()
     );
+    let epic = format!("Epic: {}", view.epic);
     spans.extend(vec![
         Spans::from(Span::raw(status)),
         Spans::from(Span::raw(or_high_ask)),
         Spans::from(Span::raw(or_high_bid)),
         Spans::from(Span::raw(or_low_ask)),
         Spans::from(Span::raw(or_low_bid)),
+        Spans::from(Span::raw(epic)),
     ]);
 
     Paragraph::new(spans)

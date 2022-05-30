@@ -38,7 +38,7 @@ pub struct TradeResultView {
 
 #[derive(Debug, Clone, Default)]
 pub struct AccountView {
-    pub account: Option<String>,
+    pub account: String,
     pub pnl: Option<f64>,
     pub deposit: Option<f64>,
     pub available_cash: Option<f64>,

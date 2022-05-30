@@ -46,21 +46,20 @@ impl IgStreamClient {
             HeaderValue::from_str("TLCP-2.1.0.lightstreamer.com").unwrap(),
         );
         let (ws_stream, _) = connect_async(request).await.expect("Can't connect");
-        let (mut write, read) = ws_stream.split();
+        let (mut write, mut read) = ws_stream.split();
         let (control_tx, mut control_rx) = channel(22);
         let cloned_ws_tx = control_tx.clone();
         let cloned_event_tx = self.tx.clone();
 
         tokio::spawn(async move {
-            info!("Starting IG Control");
             while let Some(Tlcp(request)) = control_rx.recv().await {
                 write.send(request.into()).await.unwrap();
             }
         });
 
         tokio::spawn(async move {
-            read.for_each(|m| async {
-                let data = m.unwrap().into_text().unwrap();
+            while let Some(Ok(m)) = read.next().await {
+                let data = m.into_text().unwrap();
                 let messages = data.split_terminator("\r\n");
                 for m in messages {
                     // info!("WS: {:?}", m);
@@ -144,7 +143,7 @@ impl IgStreamClient {
                         } => match subscription_id {
                             1 => cloned_event_tx
                                 .send(RealtimeEvent::AccountEvent(parse_account_update(
-                                    fields_values,
+                                    fields_values, connection_details.account.clone()
                                 )))
                                 .await
                                 .unwrap(),
@@ -178,18 +177,17 @@ impl IgStreamClient {
                             }
                             id if id > 2 => cloned_event_tx
                                 .send(RealtimeEvent::MarketEvent(parse_market_update(
-                                    fields_values,
+                                    fields_values, "".to_string()//subscription_manager.get_epic(id)
                                 )))
                                 .await
                                 .unwrap(),
-                            id => error!("Unsupported update: {:?}", id),
+                            id => warn!("Unsupported update: {:?}", id),
                         },
                         TlcpResponse::LOOP { .. } => panic!("Session rebinding not supported"),
-                        msg => error!("Unhandled WS event: {:?}", msg),
+                        msg => warn!("Unhandled WS event: {:?}", msg),
                     }
                 }
-            })
-            .await;
+            }
         });
         // Setup session
         control_tx

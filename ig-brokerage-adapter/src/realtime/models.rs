@@ -35,7 +35,7 @@ impl FromStr for MarketState {
 
 #[derive(Debug, Clone)]
 pub struct AccountUpdate {
-    pub account: Option<String>,
+    pub account: String,
     pub pnl: Option<f64>,
     pub deposit: Option<f64>,
     pub available_cash: Option<f64>,
@@ -57,12 +57,13 @@ pub struct MarketUpdate {
     pub market_delay: Option<usize>,
     pub market_state: Option<MarketState>,
     pub update_time: Option<String>,
+    pub epic: String,
 }
 
 impl Default for AccountUpdate {
     fn default() -> Self {
         AccountUpdate {
-            account: Some("ZQVBB".to_string()),
+            account: "".to_string(),
             pnl: None,
             deposit: None,
             available_cash: None,
