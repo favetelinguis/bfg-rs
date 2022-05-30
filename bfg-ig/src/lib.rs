@@ -386,6 +386,7 @@ impl MarketCache {
     /// Only update fields that has new values
     /// Returns the latest copy of the market
     fn update(&mut self, update: MarketUpdate) -> Option<Event> {
+        self.epic = update.epic;
         if update.update_time.is_some() {
             self.update_time =
                 Some(NaiveTime::from_str(update.update_time.unwrap().as_str()).unwrap());
@@ -421,6 +422,7 @@ impl MarketCache {
                         .expect("we know update_time always has value"),
                     bid: self.bid.expect("we know bid always has value"),
                     ask: self.ask.expect("we know ask always has value"),
+                    epic: self.epic.clone(),
                 });
             }
         }

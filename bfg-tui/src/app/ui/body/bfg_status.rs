@@ -43,6 +43,7 @@ pub fn draw_market_view<'a>(state: &MarketView) -> Paragraph<'a> {
     let bid = state.bid.unwrap_or_default();
     let ask = state.ask.unwrap_or_default();
     let real_spread = ask - bid;
+    let epic = format!("Epic: {}", state.epic);
     let spread = format!("Spread: {:.1}", real_spread);
     let bid = format!(
         "Bid: {}",
@@ -71,6 +72,7 @@ pub fn draw_market_view<'a>(state: &MarketView) -> Paragraph<'a> {
         Spans::from(Span::raw(market_state)),
         Spans::from(Span::raw(market_delay)),
         Spans::from(Span::raw(update_time)),
+        Spans::from(Span::raw(epic)),
     ])
     .style(Style::default().fg(Color::LightCyan))
     .alignment(Alignment::Left)
@@ -105,8 +107,8 @@ pub fn draw_results_view<'a>(views: &Vec<TradeResultView>) -> Table<'a> {
         }
         let row = Row::new(vec![
             Cell::from(Span::styled(view.epic.clone(), row_style)),
-            Cell::from(Span::styled(entry_slippage.to_string(), row_style)),
-            Cell::from(Span::styled(pnl_pips.to_string(), row_style)),
+            Cell::from(Span::styled(format!("{:.1}", entry_slippage), row_style)),
+            Cell::from(Span::styled(format!("{:.1}", pnl_pips), row_style)),
         ]);
         rows.push(row);
     }

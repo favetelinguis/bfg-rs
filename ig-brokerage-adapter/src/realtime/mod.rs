@@ -14,9 +14,11 @@ use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use url::Url;
 use bfg_core::decider::MarketInfo;
+use crate::realtime::subscription_manager::SubscriptionManager;
 
 pub mod models;
 pub mod notifications;
+mod subscription_manager;
 
 #[derive(Debug)]
 struct Tlcp(TlcpRequest);
@@ -58,6 +60,7 @@ impl IgStreamClient {
         });
 
         tokio::spawn(async move {
+            let mut subscription_manager = SubscriptionManager::new(markets);
             while let Some(Ok(m)) = read.next().await {
                 let data = m.into_text().unwrap();
                 let messages = data.split_terminator("\r\n");
@@ -115,10 +118,10 @@ impl IgStreamClient {
                                 .await
                                 .unwrap(); // TRADE
                             let mut market_stream_id = 3;
-                            for market in markets.iter() {
+                            for sub_id in subscription_manager.get_subscription_id_range() {
                                 cloned_ws_tx
                                     .send(Tlcp(TlcpRequest::Subscribe {
-                                        item: format!("MARKET:{}", market.epic.clone()),
+                                        item: format!("MARKET:{}", subscription_manager.get_epic_from_subscription_id(sub_id)),
                                         fields: vec![
                                             "BID".to_string(),
                                             "OFFER".to_string(),
@@ -177,7 +180,7 @@ impl IgStreamClient {
                             }
                             id if id > 2 => cloned_event_tx
                                 .send(RealtimeEvent::MarketEvent(parse_market_update(
-                                    fields_values, "".to_string()//subscription_manager.get_epic(id)
+                                    fields_values, subscription_manager.get_epic_from_subscription_id(id as usize)
                                 )))
                                 .await
                                 .unwrap(),

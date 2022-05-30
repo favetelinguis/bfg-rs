@@ -18,6 +18,7 @@ pub enum OrderEvent {
 pub enum Event {
     Order(OrderEvent, OrderReference),
     Market {
+        epic: String,
         update_time: NaiveTime,
         bid: f64,
         ask: f64,
