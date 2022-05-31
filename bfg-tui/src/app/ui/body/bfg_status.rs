@@ -16,17 +16,17 @@ where
 {
     let body_chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
+        .constraints([Constraint::Percentage(70), Constraint::Percentage(30)].as_ref())
         .split(chunk);
 
     let market_results_chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
+        .constraints([Constraint::Percentage(70), Constraint::Percentage(30)].as_ref())
         .split(body_chunks[0]);
 
     let system_account_chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
+        .constraints([Constraint::Percentage(75), Constraint::Percentage(25)].as_ref())
         .split(body_chunks[1]);
 
     let market= draw_market_view(app.market.borrow());
@@ -39,50 +39,55 @@ where
     rect.render_widget(account, system_account_chunks[1]);
 }
 
-pub fn draw_market_view<'a>(state: &MarketView) -> Paragraph<'a> {
-    let bid = state.bid.unwrap_or_default();
-    let ask = state.ask.unwrap_or_default();
-    let real_spread = ask - bid;
-    let epic = format!("Epic: {}", state.epic);
-    let spread = format!("Spread: {:.1}", real_spread);
-    let bid = format!(
-        "Bid: {}",
-        state.bid.map(|n| n.to_string()).unwrap_or_default()
-    );
-    let offer = format!(
-        "Ask: {}",
-        state.ask.map(|n| n.to_string()).unwrap_or_default()
-    );
-    let market_state = format!("Market state: {:?}", state.market_state);
-    let market_delay = format!(
-        "Market delay: {}",
-        state
-            .market_delay
-            .map(|n| n.to_string())
-            .unwrap_or_default()
-    );
-    let update_time = format!(
-        "Update time: {}",
-        state.update_time.clone().unwrap_or_default()
-    );
-    Paragraph::new(vec![
-        Spans::from(Span::raw(spread)),
-        Spans::from(Span::raw(bid)),
-        Spans::from(Span::raw(offer)),
-        Spans::from(Span::raw(market_state)),
-        Spans::from(Span::raw(market_delay)),
-        Spans::from(Span::raw(update_time)),
-        Spans::from(Span::raw(epic)),
-    ])
-    .style(Style::default().fg(Color::LightCyan))
-    .alignment(Alignment::Left)
-    .block(
-        Block::default()
-            .borders(Borders::ALL)
-            .style(Style::default().fg(Color::White))
-            .title("Market")
-            .border_type(BorderType::Plain),
-    )
+pub fn draw_market_view<'a>(view: &MarketView) -> Table<'a> {
+    let header_style = Style::default().fg(Color::LightCyan);
+    let row_style = Style::default().fg(Color::Gray);
+
+    let mut rows = vec![];
+    let headers = Row::new(vec![
+        Cell::from(Span::styled("Epic", header_style)),
+        Cell::from(Span::styled("Bid", header_style)),
+        Cell::from(Span::styled("Ask", header_style)),
+        Cell::from(Span::styled("Spread", header_style)),
+        Cell::from(Span::styled("State", header_style)),
+        Cell::from(Span::styled("Delay", header_style)),
+        Cell::from(Span::styled("Time", header_style)),
+    ]);
+    rows.push(headers); // TODO is this how headers are set?
+
+    for _ in 1..2 { // Fake now but shows when we have multiple markets
+        let bid = view.bid.unwrap_or_default();
+        let ask = view.ask.unwrap_or_default();
+        let spread = ask - bid;
+        let row = Row::new(vec![
+            Cell::from(Span::styled(format!("{:.8}..", view.epic), row_style)),
+            Cell::from(Span::styled(format!("{:.1}", bid), row_style)),
+            Cell::from(Span::styled(format!("{:.1}", ask), row_style)),
+            Cell::from(Span::styled(format!("{:.1}", spread), row_style)),
+            Cell::from(Span::styled(view.market_state.clone().unwrap_or_default(), row_style)),
+            Cell::from(Span::styled(format!("{}", view.market_delay.unwrap_or_default()), row_style)),
+            Cell::from(Span::styled(view.update_time.clone().unwrap_or_default(), row_style)),
+        ]);
+        rows.push(row);
+    }
+
+    Table::new(rows)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Plain)
+                .title("Market"),
+        )
+        .widths(&[
+            Constraint::Percentage(15), // epic
+            Constraint::Percentage(10), // bid
+            Constraint::Percentage(10), // ask
+            Constraint::Percentage(10), // spread
+            Constraint::Percentage(15), // state
+            Constraint::Percentage(10), // delay
+            Constraint::Percentage(10), // time
+        ])
+        .column_spacing(1)
 }
 
 pub fn draw_results_view<'a>(views: &Vec<TradeResultView>) -> Table<'a> {
@@ -106,7 +111,7 @@ pub fn draw_results_view<'a>(views: &Vec<TradeResultView>) -> Table<'a> {
             pnl_pips = view.actual_entry_level - view.exit_level;
         }
         let row = Row::new(vec![
-            Cell::from(Span::styled(view.epic.clone(), row_style)),
+            Cell::from(Span::styled(format!("{:.8}..", view.epic), row_style)),
             Cell::from(Span::styled(format!("{:.1}", entry_slippage), row_style)),
             Cell::from(Span::styled(format!("{:.1}", pnl_pips), row_style)),
         ]);
@@ -120,7 +125,7 @@ pub fn draw_results_view<'a>(views: &Vec<TradeResultView>) -> Table<'a> {
                 .border_type(BorderType::Plain)
                 .title("Result"),
         )
-        .widths(&[Constraint::Length(20), Constraint::Min(20)])
+        .widths(&[Constraint::Percentage(40), Constraint::Percentage(30), Constraint::Percentage(30)])
         .column_spacing(1)
 }
 
@@ -129,18 +134,6 @@ pub fn draw_account_view<'a>(state: &AccountView) -> Paragraph<'a> {
     let pnl = format!(
         "PNL: {}",
         state.pnl.map(|n| n.to_string()).unwrap_or_default()
-    );
-    let pnl_lr = format!(
-        "PNL LR: {}",
-        state.pnl_lr.map(|n| n.to_string()).unwrap_or_default()
-    );
-    let pnl_nlr = format!(
-        "PNL NLR: {}",
-        state.pnl_nlr.map(|n| n.to_string()).unwrap_or_default()
-    );
-    let deposit = format!(
-        "Deposit: {}",
-        state.deposit.map(|n| n.to_string()).unwrap_or_default()
     );
     let available_cash = format!(
         "Available Cash: {}",
@@ -157,42 +150,16 @@ pub fn draw_account_view<'a>(state: &AccountView) -> Paragraph<'a> {
         "Margin: {}",
         state.margin.map(|n| n.to_string()).unwrap_or_default()
     );
-    let margin_lr = format!(
-        "Margin LR: {}",
-        state.margin_lr.map(|n| n.to_string()).unwrap_or_default()
-    );
-    let margin_nlr = format!(
-        "Margin NLR: {}",
-        state.margin_nlr.map(|n| n.to_string()).unwrap_or_default()
-    );
-    let available_to_deal = format!(
-        "Available To Deal: {}",
-        state
-            .available_to_deal
-            .map(|n| n.to_string())
-            .unwrap_or_default()
-    );
-    let equity = format!(
-        "Equity: {}",
-        state.equity.map(|n| n.to_string()).unwrap_or_default()
-    );
     let equity_used = format!(
         "Equity Used: {}",
         state.equity_used.map(|n| n.to_string()).unwrap_or_default()
     );
     Paragraph::new(vec![
         Spans::from(Span::raw(account)),
-        Spans::from(Span::raw(pnl)),
-        Spans::from(Span::raw(pnl_lr)),
-        Spans::from(Span::raw(pnl_nlr)),
-        Spans::from(Span::raw(deposit)),
         Spans::from(Span::raw(available_cash)),
-        Spans::from(Span::raw(funds)),
         Spans::from(Span::raw(margin)),
-        Spans::from(Span::raw(margin_lr)),
-        Spans::from(Span::raw(margin_nlr)),
-        Spans::from(Span::raw(available_to_deal)),
-        Spans::from(Span::raw(equity)),
+        Spans::from(Span::raw(pnl)),
+        Spans::from(Span::raw(funds)),
         Spans::from(Span::raw(equity_used)),
     ])
     .style(Style::default().fg(Color::LightCyan))
@@ -205,50 +172,65 @@ pub fn draw_account_view<'a>(state: &AccountView) -> Paragraph<'a> {
             .border_type(BorderType::Plain),
     )
 }
-pub fn draw_system_view<'a>(view: &SystemView) -> Paragraph<'a> {
-    let status = format!("System Status: {}", view.state);
-    let mut spans = vec![];
-    for order in view.orders.iter() {
-        let text = format!(" - {}: {}", order.reference, order.state);
-        let span = Spans::from(Span::raw(text));
-        spans.push(span);
-    }
-    let or_high_ask = format!(
-        "Opening Range High Ask: {}",
-        view.opening_range_high_ask.unwrap_or_default()
-    );
-    let or_low_ask = format!(
-        "Opening Range Low Ask: {}",
-        view.opening_range_low_ask.unwrap_or_default()
-    );
-    let or_high_bid = format!(
-        "Opening Range High Bid: {}",
-        view.opening_range_high_bid.unwrap_or_default()
-    );
-    let or_low_bid = format!(
-        "Opening Range Low Bid: {}",
-        view.opening_range_low_bid.unwrap_or_default()
-    );
-    let epic = format!("Epic: {}", view.epic);
-    spans.extend(vec![
-        Spans::from(Span::raw(status)),
-        Spans::from(Span::raw(or_high_ask)),
-        Spans::from(Span::raw(or_high_bid)),
-        Spans::from(Span::raw(or_low_ask)),
-        Spans::from(Span::raw(or_low_bid)),
-        Spans::from(Span::raw(epic)),
-    ]);
 
-    Paragraph::new(spans)
-    .style(Style::default().fg(Color::LightCyan))
-    .alignment(Alignment::Left)
-    .block(
-        Block::default()
-            .borders(Borders::ALL)
-            .style(Style::default().fg(Color::White))
-            .title("System")
-            .border_type(BorderType::Plain),
-    )
+pub fn draw_system_view<'a>(view: &SystemView) -> Table<'a> {
+    let header_style = Style::default().fg(Color::LightCyan);
+    let row_style = Style::default().fg(Color::Gray);
+
+    let mut rows = vec![];
+    let headers = Row::new(vec![
+        Cell::from(Span::styled("Epic", header_style)),
+        Cell::from(Span::styled("Status", header_style)),
+        Cell::from(Span::styled("Long", header_style)),
+        Cell::from(Span::styled("Short", header_style)),
+        Cell::from(Span::styled("High Ask", header_style)),
+        Cell::from(Span::styled("High Bid", header_style)),
+        Cell::from(Span::styled("Low Ask", header_style)),
+        Cell::from(Span::styled("Low Bid", header_style)),
+    ]);
+    rows.push(headers); // TODO is this how headers are set?
+
+    for _ in 1..2 { // Fake now but shows when we have multiple system
+        let mut long = "".to_string();
+        let mut short = "".to_string();
+        for order in view.orders.iter() {
+            if order.reference.contains("LONG") {
+                long = order.state.clone();
+            } else {
+                short = order.state.clone();
+            }
+        }
+        let row = Row::new(vec![
+            Cell::from(Span::styled(format!("{:.8}..", view.epic), row_style)),
+            Cell::from(Span::styled(view.state.clone(), row_style)),
+            Cell::from(Span::styled(long, row_style)),
+            Cell::from(Span::styled(short, row_style)),
+            Cell::from(Span::styled(format!("{:.1}", view.opening_range_high_ask.unwrap_or_default()), row_style)),
+            Cell::from(Span::styled(format!("{:.1}", view.opening_range_high_bid.unwrap_or_default()), row_style)),
+            Cell::from(Span::styled(format!("{:.1}", view.opening_range_low_ask.unwrap_or_default()), row_style)),
+            Cell::from(Span::styled(format!("{:.1}", view.opening_range_low_bid.unwrap_or_default()), row_style)),
+        ]);
+        rows.push(row);
+    }
+
+    Table::new(rows)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Plain)
+                .title("System"),
+        )
+        .widths(&[
+            Constraint::Percentage(10), // epic
+            Constraint::Percentage(10), // status
+            Constraint::Percentage(20), // long
+            Constraint::Percentage(20), // short
+            Constraint::Percentage(10), // hi ask
+            Constraint::Percentage(10), // hi bid
+            Constraint::Percentage(10), // lo ask
+            Constraint::Percentage(10), //lo bid
+        ])
+        .column_spacing(1)
 }
 
 pub fn draw_tick<'a>(loading: bool, state: &AppState) -> Paragraph<'a> {

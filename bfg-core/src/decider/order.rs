@@ -7,13 +7,12 @@ use crate::decider::system::OpeningRange;
 #[derive(Debug)]
 pub struct WorkingOrderMachine<S> {
     state: S,
-}
-
-#[derive(Debug)]
-pub struct AwaitingWOOpenConfirmation {
     market_info: MarketInfo,
     opening_range: OpeningRange,
 }
+
+#[derive(Debug)]
+pub struct AwaitingWOOpenConfirmation;
 #[derive(Debug)]
 pub struct WOOpenRejected;
 #[derive(Debug)]
@@ -21,8 +20,6 @@ pub struct WOOpenAccepted {
     pub wanted_entry_level: f64,
     reference: OrderReference,
     deal_id: String,
-    market_info: MarketInfo,
-    opening_range: OpeningRange,
 }
 #[derive(Debug)]
 pub struct PositionOpened {
@@ -31,8 +28,6 @@ pub struct PositionOpened {
     pub entry_time: DateTime<Utc>,
     reference: OrderReference,
     deal_id: String,
-    market_info: MarketInfo,
-    opening_range: OpeningRange,
 }
 #[derive(Debug)]
 pub struct AwaitingTrailingStopConfirmation {
@@ -41,8 +36,6 @@ pub struct AwaitingTrailingStopConfirmation {
     pub entry_time: DateTime<Utc>,
     reference: OrderReference,
     deal_id: String,
-    market_info: MarketInfo,
-    opening_range: OpeningRange,
 }
 #[derive(Debug)]
 pub struct PositionTrailingStopAccepted {
@@ -51,7 +44,6 @@ pub struct PositionTrailingStopAccepted {
     pub entry_time: DateTime<Utc>,
     reference: OrderReference,
     deal_id: String,
-    market_info: MarketInfo,
 }
 #[derive(Debug)]
 pub struct WOCloseRejected;
@@ -65,7 +57,6 @@ pub struct PositionExited {
     pub exit_time: DateTime<Utc>,
     pub exit_level: f64,
     reference: OrderReference,
-    pub market_info: MarketInfo,
     deal_id: String,
 }
 
@@ -75,18 +66,20 @@ impl From<WorkingOrderMachine<AwaitingWOOpenConfirmation>> for WorkingOrderMachi
             state: WOOpenAccepted {
                 wanted_entry_level: Default::default(),
                 reference: OrderReference::BETWEEN_LONG,
-                market_info: val.state.market_info,
                 deal_id: Default::default(),
-                opening_range: val.state.opening_range,
             },
+            market_info: val.market_info,
+            opening_range: val.opening_range,
         }
     }
 }
 
 impl From<WorkingOrderMachine<AwaitingWOOpenConfirmation>> for WorkingOrderMachine<WOOpenRejected> {
-    fn from(_: WorkingOrderMachine<AwaitingWOOpenConfirmation>) -> Self {
+    fn from(val: WorkingOrderMachine<AwaitingWOOpenConfirmation>) -> Self {
         Self {
             state: WOOpenRejected,
+            market_info: val.market_info,
+            opening_range: val.opening_range,
         }
     }
 }
@@ -99,10 +92,10 @@ impl From<WorkingOrderMachine<WOOpenAccepted>> for WorkingOrderMachine<PositionO
                 actual_entry_level: Default::default(),
                 entry_time: Utc::now(),
                 reference: val.state.reference,
-                market_info: val.state.market_info,
                 deal_id: val.state.deal_id,
-                opening_range: val.state.opening_range,
             },
+            market_info: val.market_info,
+            opening_range: val.opening_range,
         }
     }
 }
@@ -118,9 +111,9 @@ impl From<WorkingOrderMachine<PositionOpened>>
                 entry_time: val.state.entry_time,
                 reference: val.state.reference,
                 deal_id: val.state.deal_id,
-                market_info: val.state.market_info,
-                opening_range: val.state.opening_range,
             },
+            market_info: val.market_info,
+            opening_range: val.opening_range,
         }
     }
 }
@@ -135,9 +128,10 @@ impl From<WorkingOrderMachine<AwaitingTrailingStopConfirmation>>
                 actual_entry_level: val.state.actual_entry_level,
                 entry_time: val.state.entry_time,
                 reference: val.state.reference,
-                market_info: val.state.market_info,
                 deal_id: val.state.deal_id,
             },
+            market_info: val.market_info,
+            opening_range: val.opening_range,
         }
     }
 }
@@ -153,9 +147,9 @@ impl From<WorkingOrderMachine<AwaitingTrailingStopConfirmation>>
                 entry_time: val.state.entry_time,
                 reference: val.state.reference,
                 deal_id: val.state.deal_id,
-                market_info: val.state.market_info,
-                opening_range: val.state.opening_range,
             },
+            market_info: val.market_info,
+            opening_range: val.opening_range,
         }
     }
 }
@@ -173,8 +167,9 @@ impl From<WorkingOrderMachine<AwaitingTrailingStopConfirmation>>
                 exit_level: Default::default(),
                 reference: val.state.reference,
                 deal_id: val.state.deal_id,
-                market_info: val.state.market_info,
             },
+            market_info: val.market_info,
+            opening_range: val.opening_range,
         }
     }
 }
@@ -192,8 +187,9 @@ impl From<WorkingOrderMachine<PositionTrailingStopAccepted>>
                 exit_level: Default::default(),
                 reference: val.state.reference,
                 deal_id: val.state.deal_id,
-                market_info: val.state.market_info,
             },
+            market_info: val.market_info,
+            opening_range: val.opening_range,
         }
     }
 }
@@ -209,8 +205,9 @@ impl From<WorkingOrderMachine<PositionOpened>> for WorkingOrderMachine<PositionE
                 exit_level: Default::default(),
                 reference: val.state.reference,
                 deal_id: val.state.deal_id,
-                market_info: val.state.market_info,
             },
+            market_info: val.market_info,
+            opening_range: val.opening_range,
         }
     }
 }
@@ -218,18 +215,22 @@ impl From<WorkingOrderMachine<PositionOpened>> for WorkingOrderMachine<PositionE
 impl From<WorkingOrderMachine<WOOpenAccepted>>
     for WorkingOrderMachine<WOCloseAccepted>
 {
-    fn from(_: WorkingOrderMachine<WOOpenAccepted>) -> Self {
+    fn from(val: WorkingOrderMachine<WOOpenAccepted>) -> Self {
         Self {
             state: WOCloseAccepted,
+            market_info: val.market_info,
+            opening_range: val.opening_range,
         }
     }
 }
 impl From<WorkingOrderMachine<WOOpenAccepted>>
 for WorkingOrderMachine<WOCloseRejected>
 {
-    fn from(_: WorkingOrderMachine<WOOpenAccepted>) -> Self {
+    fn from(val: WorkingOrderMachine<WOOpenAccepted>) -> Self {
         Self {
             state: WOCloseRejected,
+            market_info: val.market_info,
+            opening_range: val.opening_range,
         }
     }
 }
@@ -238,7 +239,8 @@ for WorkingOrderMachine<WOCloseRejected>
 impl WorkingOrderMachine<AwaitingWOOpenConfirmation> {
     fn new(market_info: MarketInfo, opening_range: OpeningRange) -> Self {
         Self {
-            state: AwaitingWOOpenConfirmation {market_info, opening_range},
+            state: AwaitingWOOpenConfirmation,
+            market_info, opening_range,
         }
     }
 }
@@ -356,7 +358,7 @@ impl WorkingOrder {
                     val.state.actual_entry_level,
                 ) =>
             {
-                let stop_distance= val.state.market_info.min_stop_distance;
+                let stop_distance= val.market_info.min_stop_distance;
                 let direction_multiple;
                 if let OrderReference::OVER_LONG | OrderReference::BETWEEN_LONG =
                 val.state.reference.clone()
@@ -370,12 +372,12 @@ impl WorkingOrder {
                 if let OrderReference::BETWEEN_SHORT =
                 val.state.reference.clone()
                 {
-                    target = Some(val.state.opening_range.low_ask);
+                    target = Some(val.opening_range.low_ask);
                 };
                 if let OrderReference::BETWEEN_LONG =
                 val.state.reference.clone()
                 {
-                    target = Some(val.state.opening_range.high_bid);
+                    target = Some(val.opening_range.high_bid);
                 };
                 let command = Command::UpdatePosition {
                     level: val.state.actual_entry_level + (stop_distance as f64 * direction_multiple),
@@ -409,7 +411,7 @@ impl WorkingOrder {
                 WorkingOrder::AwaitingTrailingStopConfirmation(val),
                 Event::Order(OrderEvent::PositionExit { exit_level }, _),
             ) => {
-                let epic = val.state.market_info.epic.clone();
+                let epic = val.market_info.epic.clone();
                 let mut new_state: WorkingOrderMachine<PositionExited> = val.into();
                 new_state.state.exit_level = exit_level.clone();
 
@@ -429,7 +431,7 @@ impl WorkingOrder {
                 WorkingOrder::PositionTrailingStopAccepted(val),
                 Event::Order(OrderEvent::PositionExit { exit_level }, _),
             ) => {
-                let epic = val.state.market_info.epic.clone();
+                let epic = val.market_info.epic.clone();
                 let mut new_state: WorkingOrderMachine<PositionExited> = val.into();
                 new_state.state.exit_level = exit_level.clone();
                 let command = Command::PublishTradeResults(TradeResult {
@@ -448,7 +450,7 @@ impl WorkingOrder {
                 WorkingOrder::PositionOpened(val),
                 Event::Order(OrderEvent::PositionExit { exit_level }, _),
             ) => {
-                let epic = val.state.market_info.epic.clone();
+                let epic = val.market_info.epic.clone();
                 let mut new_state: WorkingOrderMachine<PositionExited> = val.into();
                 new_state.state.exit_level = exit_level.clone();
                 let command = Command::PublishTradeResults(TradeResult {

@@ -1,0 +1,1 @@
+Config should be located in `$HOME/bfg/{demo|live}/config.json` this is also where results are written.

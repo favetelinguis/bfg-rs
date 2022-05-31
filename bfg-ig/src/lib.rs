@@ -12,9 +12,11 @@ use tokio::sync::mpsc::Sender;
 use bfg_core::decider::order::WorkingOrder;
 use bfg_core::decider::system::{System};
 use ig_brokerage_adapter::errors::BrokerageError;
+use crate::file_writer::write_results_to_file;
 use crate::models::{AccountView, MarketView, ConnectionInformationView, TradeResultView};
 
 pub mod models;
+mod file_writer;
 
 #[derive(Debug)]
 pub enum IgEvent {
@@ -268,9 +270,10 @@ impl BfgIg {
                                 }
                                 Command::PublishTradeResults(update) => {
                                     info!("Executing: PublishTradeResults");
-                                    trade_results_cache.update(update);
+                                    write_results_to_file(update.clone());
+                                    trade_results_cache.update(update.clone());
                                     ig_tx.send(trade_results_cache.get_current_view()).await.expect("Failed sending message");
-                                    vec![Event::PositionExit]
+                                    vec![Event::PositionExit(update.reference.clone())]
                                 }
                                 Command::FatalFailure(reason) => {
                                     info!("Executing: FatalFailure with reason {}", reason);

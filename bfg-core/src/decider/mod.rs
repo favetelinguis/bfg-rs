@@ -28,7 +28,7 @@ pub enum Event {
         prices: Vec<OhlcPrice>,
     },
     Error(String),
-    PositionExit,
+    PositionExit(OrderReference),
 }
 
 #[derive(Debug)]
@@ -58,7 +58,7 @@ pub enum Command {
     FatalFailure(String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TradeResult {
 pub wanted_entry_level: f64,
 pub actual_entry_level: f64,

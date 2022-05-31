@@ -1,3 +1,4 @@
+use std::env::home_dir;
 use std::str::FromStr;
 use chrono::{NaiveDate, NaiveTime};
 use bfg_ig::models::{ConnectionDetails, MarketInfo};
@@ -33,7 +34,9 @@ pub struct BfgConfig {
 
 impl BfgConfig {
     pub async fn new() -> Self {
-        let data = fs::read_to_string("./config.json").await.expect("Unable to read file");
+        let mut path = home_dir().expect("always have a home");
+        path.push("bfg/demo/config.json");
+        let data = fs::read_to_string(path.as_path()).await.expect("Unable to read file");
         let json: InternalConfig = serde_json::from_str(&data)
             .expect("JSON is not the correct format");
         Self {

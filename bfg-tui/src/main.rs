@@ -1,7 +1,7 @@
-use bfg_tui_base::app::App;
-use bfg_tui_base::io::handler::IoAsyncHandler;
-use bfg_tui_base::io::IoEvent;
-use bfg_tui_base::start_ui;
+use bfg_tui::app::App;
+use bfg_tui::io::handler::IoAsyncHandler;
+use bfg_tui::io::IoEvent;
+use bfg_tui::start_ui;
 use dotenvy::dotenv;
 use eyre::Result;
 use std::sync::Arc;

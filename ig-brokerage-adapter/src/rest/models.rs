@@ -199,7 +199,7 @@ pub struct EditPositionRequest {
     #[serde(rename = "guaranteedStop")]
     pub guaranteed_stop: bool,
     #[serde(rename = "limitLevel")]
-    pub limit_level: f64,
+    pub limit_level: Option<f64>,
     #[serde(rename = "stopLevel")]
     pub stop_level: f64,
     #[serde(rename = "trailingStop")]
@@ -215,7 +215,7 @@ impl Default for EditPositionRequest {
         Self {
             guaranteed_stop: false,
             stop_level: 0.,
-            limit_level: 0.,
+            limit_level: None,
             trailing_stop_distance: 5,
             trailing_stop_increment: 1,
             trailing_stop: true,
@@ -225,15 +225,12 @@ impl Default for EditPositionRequest {
 
 impl EditPositionRequest {
     pub fn new(stop_level: f64, trailing_stop_distance: u8, target_level: Option<f64>) -> Self {
-        let mut val = Self {
+        Self {
             stop_level,
             trailing_stop_distance,
+            limit_level: target_level,
             ..EditPositionRequest::default()
-        };
-        if let Some(target) = target_level {
-            val.limit_level = target;
         }
-        val
     }
 }
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -253,7 +250,7 @@ pub struct CreateWorkingOrderRequest {
     pub guaranteed_stop: bool,
     pub level: f64,
     #[serde(rename = "limitDistance")]
-    pub limit_distance: u8,
+    pub limit_distance: Option<u8>,
     pub size: u8,
     #[serde(rename = "stopDistance")]
     pub stop_distance: u8,
@@ -262,7 +259,7 @@ pub struct CreateWorkingOrderRequest {
     #[serde(rename = "type")]
     pub working_order_type: WorkingOrderType,
     #[serde(rename = "limitLevel")]
-    pub limit_level: f64,
+    pub limit_level: Option<f64>,
 }
 
 impl Default for CreateWorkingOrderRequest {
@@ -283,10 +280,10 @@ impl Default for CreateWorkingOrderRequest {
             level: 0.,
             guaranteed_stop: false,
             stop_distance: 0,
-            limit_distance: 0,
+            limit_distance: None,
             force_open: false, // Is this to be like netting? Dont understand this
             currency_code: "EUR".to_string(),
-            limit_level: 0.,
+            limit_level: None,
         }
     }
 }
@@ -302,15 +299,14 @@ impl CreateWorkingOrderRequest {
             size: market_info.min_lot_size,
             stop_distance: market_info.min_stop_distance,
             currency_code: market_info.currency,
-
             ..CreateWorkingOrderRequest::default()
         };
         if let Some(target) = target_price {
             // If we specify a target
-            val.limit_level = target;
+            val.limit_level = Some(target);
         } else {
             // Default target
-            val.limit_distance = market_info.min_stop_distance * 10;
+            val.limit_distance = Some(market_info.min_stop_distance * 10);
         }
         val
     }

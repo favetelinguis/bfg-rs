@@ -10,6 +10,7 @@ use chrono::{Duration, NaiveDateTime, Utc};
 pub struct SystemMachine<S> {
     pub state: S,
     pub market_info: MarketInfo,
+    pub last_position_reference: Option<OrderReference>,
 }
 
 #[derive(Debug)]
@@ -37,6 +38,7 @@ impl SystemMachine<Setup> {
         SystemMachine {
             state: Setup,
             market_info,
+            last_position_reference: None,
         }
     }
 }
@@ -46,6 +48,7 @@ impl From<SystemMachine<Setup>> for SystemMachine<AwaitData> {
         Self {
             state: AwaitData,
             market_info: val.market_info,
+            last_position_reference: val.last_position_reference,
         }
     }
 }
@@ -55,6 +58,7 @@ impl From<SystemMachine<AwaitData>> for SystemMachine<DataFailure> {
         Self {
             state: DataFailure,
             market_info: val.market_info,
+            last_position_reference: val.last_position_reference,
         }
     }
 }
@@ -67,6 +71,7 @@ impl From<SystemMachine<AwaitData>> for SystemMachine<DecideOrderPlacement> {
                 order_manager: Default::default(),
             },
             market_info: val.market_info,
+            last_position_reference: val.last_position_reference,
         }
     }
 }
@@ -79,6 +84,7 @@ impl From<SystemMachine<DecideOrderPlacement>> for SystemMachine<ManageOrders> {
                 order_manager: val.state.order_manager,
             },
             market_info: val.market_info,
+            last_position_reference: val.last_position_reference,
         }
     }
 }
@@ -91,6 +97,7 @@ impl From<SystemMachine<ManageOrders>> for SystemMachine<DecideOrderPlacement> {
                 order_manager: Default::default(), // Reset all orders
             },
             market_info: val.market_info,
+            last_position_reference: val.last_position_reference,
         }
     }
 }
@@ -100,6 +107,7 @@ impl From<SystemMachine<DecideOrderPlacement>> for SystemMachine<Setup> {
         Self {
             state: Setup,
             market_info: val.market_info,
+            last_position_reference: val.last_position_reference,
         }
     }
 }
@@ -110,6 +118,7 @@ impl From<SystemMachine<Setup>> for SystemMachine<Error> {
         Self {
             state: Error,
             market_info: val.market_info,
+            last_position_reference: val.last_position_reference,
         }
     }
 }
@@ -118,6 +127,7 @@ impl From<SystemMachine<AwaitData>> for SystemMachine<Error> {
         Self {
             state: Error,
             market_info: val.market_info,
+            last_position_reference: val.last_position_reference,
         }
     }
 }
@@ -126,6 +136,7 @@ impl From<SystemMachine<DecideOrderPlacement>> for SystemMachine<Error> {
         Self {
             state: Error,
             market_info: val.market_info,
+            last_position_reference: val.last_position_reference,
         }
     }
 }
@@ -134,6 +145,16 @@ impl From<SystemMachine<ManageOrders>> for SystemMachine<Error> {
         Self {
             state: Error,
             market_info: val.market_info,
+            last_position_reference: val.last_position_reference,
+        }
+    }
+}
+impl From<SystemMachine<ManageOrders>> for SystemMachine<Setup> {
+    fn from(val: SystemMachine<ManageOrders>) -> Self {
+        Self {
+            state: Setup,
+            market_info: val.market_info,
+            last_position_reference: val.last_position_reference,
         }
     }
 }
@@ -207,7 +228,7 @@ impl System {
                     ..
                 },
             ) if val.market_info.is_inside_trading_hours(update_time)
-                && is_price_over(val.market_info.min_step_size, &val.state.opening_range, *bid, *ask) =>
+                && is_price_over(val.market_info.min_step_size, &val.state.opening_range, *bid, *ask, &val.last_position_reference) =>
             {
                 let command = Command::CreateWorkingOrder {
                     direction: Direction::BUY,
@@ -235,7 +256,7 @@ impl System {
                     ..
                 },
             ) if val.market_info.is_inside_trading_hours(update_time)
-                && is_price_between(val.market_info.min_step_size, &val.state.opening_range, *bid, *ask) =>
+                && is_price_between(val.market_info.min_step_size, &val.state.opening_range, *bid, *ask, &val.last_position_reference) =>
             {
                 let commands = vec![
                     Command::CreateWorkingOrder {
@@ -275,7 +296,7 @@ impl System {
                     ..
                 },
             ) if val.market_info.is_inside_trading_hours(update_time)
-                && is_price_under(val.market_info.min_step_size, &val.state.opening_range, *bid, *ask) =>
+                && is_price_under(val.market_info.min_step_size, &val.state.opening_range, *bid, *ask, &val.last_position_reference) =>
             {
                 let command = Command::CreateWorkingOrder {
                     direction: Direction::SELL,
@@ -296,8 +317,8 @@ impl System {
             // ManageOrders -> ManageOrders [...] - Market
             (
                 System::ManageOrders(mut val),
-                event @ Event::Market { .. }
-            ) => {
+                event @ Event::Market { update_time, .. }
+            ) if val.market_info.is_inside_trading_hours(update_time) => {
                 let commands = val.borrow_mut().state.order_manager.step_all(event);
                 (System::ManageOrders(val), commands)
             }
@@ -309,10 +330,22 @@ impl System {
                 let commands = val.borrow_mut().state.order_manager.step_one(reference.clone(), event);
                 (System::ManageOrders(val), commands)
             }
-            (System::ManageOrders(val), Event::PositionExit) => (
-                System::DecideOrderPlacement(val.into()),
-                vec![],
-            ),
+            // ManageOrders -> Setup [...] - Order
+            (
+                System::ManageOrders(val),
+                event @ Event::Market { update_time, .. }
+            ) if !val.market_info.is_inside_trading_hours(update_time) => {
+                (System::Setup(val.into()), vec![])
+            }
+            // ManageOrders -> PositionExit []
+            (System::ManageOrders(val), Event::PositionExit(reference)) => {
+                let mut new_system: SystemMachine<DecideOrderPlacement> = val.into();
+                new_system.last_position_reference = Some(reference.clone());
+                (
+                    System::DecideOrderPlacement(new_system),
+                    vec![],
+                )
+            },
             // Error transitions - START
             (System::Setup(val), Event::Error(reason)) => (
                 System::Error(val.into()),
@@ -363,27 +396,49 @@ fn create_fetch_data_command(market_info: &MarketInfo) -> Command {
     }
 }
 
-fn is_price_over(min_step_size: u8, opening_range: &OpeningRange, bid: f64, ask: f64) -> bool {
+fn is_price_over(min_step_size: u8, opening_range: &OpeningRange, bid: f64, ask: f64, last_trade_reference: &Option<OrderReference>) -> bool {
     let level = (bid + ask) / 2.;
-    let buffer: f64 = min_step_size as f64 * 5.;
+    let buffer: f64;
+    if let Some(OrderReference::BETWEEN_SHORT | OrderReference::UNDER_SHORT) = last_trade_reference {
+        // We have twice the buffer when changing direction
+        buffer = min_step_size as f64 * 10.;
+    } else {
+        buffer = min_step_size as f64 * 5.;
+    }
     level > (opening_range.get_middle_price_high() + buffer)
 }
 
-/// Opening range must be 15pips to ever trigger between
-/// The buffer will always leave 4 pip in the middle where we will trigger
-fn is_price_between(min_step_size: u8, opening_range: &OpeningRange, bid: f64, ask: f64) -> bool {
+/// Opening range must be 17pips to ever trigger between
+/// If we try to change direction we have a buffer of 10 + 5 so that leave 2 pip in the middle to make sure
+/// we will always trigger and not fill the OR with a buffer zone.
+/// The buffer will always leave some pip in the middle where we will trigger
+fn is_price_between(min_step_size: u8, opening_range: &OpeningRange, bid: f64, ask: f64, last_trade_reference: &Option<OrderReference>) -> bool {
     let level = (bid + ask) / 2.;
-    // let buffer = opening_range.range_size() / 2. - 2.; // Old
-    let buffer = 5.;
-    let or_large_enough = opening_range.range_size() >= (min_step_size as f64 * 15.);
-    let price_between = (level < (opening_range.get_middle_price_high() - buffer))
-        && (level > (opening_range.get_middle_price_low() + buffer));
-    or_large_enough && price_between
+    let mut long_buffer = 5.;
+    let mut short_buffer = 5.;
+    // To change direction we require twice the buffer
+    if let Some(OrderReference::BETWEEN_LONG | OrderReference::OVER_LONG) = last_trade_reference {
+        short_buffer = 10.;
+    }
+    // To change direction we require twice the buffer
+    if let Some(OrderReference::BETWEEN_SHORT | OrderReference::UNDER_SHORT) = last_trade_reference {
+        long_buffer = 10.;
+    }
+    let is_or_large_enough = opening_range.range_size() >= (min_step_size as f64 * 17.);
+    let is_price_between = (level < (opening_range.get_middle_price_high() - short_buffer))
+        && (level > (opening_range.get_middle_price_low() + long_buffer));
+    is_or_large_enough && is_price_between
 }
 
-fn is_price_under(min_step_size: u8, opening_range: &OpeningRange, bid: f64, ask: f64) -> bool {
+fn is_price_under(min_step_size: u8, opening_range: &OpeningRange, bid: f64, ask: f64, last_trade_reference: &Option<OrderReference>) -> bool {
     let level = (bid + ask) / 2.;
-    let buffer = min_step_size as f64 * 5.;
+    let buffer;
+    if let Some(OrderReference::BETWEEN_LONG | OrderReference::OVER_LONG) = last_trade_reference {
+        // We have twice the buffer when changing direction
+        buffer = min_step_size as f64 * 10.;
+    } else {
+        buffer = min_step_size as f64 * 5.;
+    }
     level < (opening_range.get_middle_price_low() - buffer)
 }
 
@@ -496,6 +551,7 @@ mod tests {
 
     fn e_market_inside_trading_hours(bid: f64, ask: f64) -> Event {
         Event::Market {
+            epic: "".to_string(),
             update_time: Utc::now().time(),
             bid,
             ask,
