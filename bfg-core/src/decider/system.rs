@@ -228,7 +228,7 @@ impl System {
                     ..
                 },
             ) if val.market_info.is_inside_trading_hours(update_time)
-                && is_price_over(val.market_info.min_step_size, &val.state.opening_range, *bid, *ask, &val.last_position_reference) =>
+                && is_price_over(val.market_info.stop_distance, &val.state.opening_range, *bid, *ask, &val.last_position_reference) =>
             {
                 let command = Command::CreateWorkingOrder {
                     direction: Direction::BUY,
@@ -256,7 +256,7 @@ impl System {
                     ..
                 },
             ) if val.market_info.is_inside_trading_hours(update_time)
-                && is_price_between(val.market_info.min_step_size, &val.state.opening_range, *bid, *ask, &val.last_position_reference) =>
+                && is_price_between(val.market_info.stop_distance, &val.state.opening_range, *bid, *ask, &val.last_position_reference) =>
             {
                 let commands = vec![
                     Command::CreateWorkingOrder {
@@ -296,7 +296,7 @@ impl System {
                     ..
                 },
             ) if val.market_info.is_inside_trading_hours(update_time)
-                && is_price_under(val.market_info.min_step_size, &val.state.opening_range, *bid, *ask, &val.last_position_reference) =>
+                && is_price_under(val.market_info.stop_distance, &val.state.opening_range, *bid, *ask, &val.last_position_reference) =>
             {
                 let command = Command::CreateWorkingOrder {
                     direction: Direction::SELL,
@@ -396,48 +396,46 @@ fn create_fetch_data_command(market_info: &MarketInfo) -> Command {
     }
 }
 
-fn is_price_over(min_step_size: u8, opening_range: &OpeningRange, bid: f64, ask: f64, last_trade_reference: &Option<OrderReference>) -> bool {
+fn is_price_over(stop_distance: u8, opening_range: &OpeningRange, bid: f64, ask: f64, last_trade_reference: &Option<OrderReference>) -> bool {
     let level = (bid + ask) / 2.;
     let buffer: f64;
     if let Some(OrderReference::BETWEEN_SHORT | OrderReference::UNDER_SHORT) = last_trade_reference {
         // We have twice the buffer when changing direction
-        buffer = min_step_size as f64 * 10.;
+        buffer = stop_distance as f64 * 2.;
     } else {
-        buffer = min_step_size as f64 * 5.;
+        buffer = stop_distance as f64;
     }
     level > (opening_range.get_middle_price_high() + buffer)
 }
 
-/// Opening range must be 17pips to ever trigger between
-/// If we try to change direction we have a buffer of 10 + 5 so that leave 2 pip in the middle to make sure
-/// we will always trigger and not fill the OR with a buffer zone.
-/// The buffer will always leave some pip in the middle where we will trigger
-fn is_price_between(min_step_size: u8, opening_range: &OpeningRange, bid: f64, ask: f64, last_trade_reference: &Option<OrderReference>) -> bool {
+/// Opening range must be 3.4x stop distance
+/// If we try to change direction we have a buffer of 3x stop distance so that leave some distance when we force a 3.4x opening range to always have room to trigger.
+fn is_price_between(stop_distance: u8, opening_range: &OpeningRange, bid: f64, ask: f64, last_trade_reference: &Option<OrderReference>) -> bool {
     let level = (bid + ask) / 2.;
-    let mut long_buffer = 5.;
-    let mut short_buffer = 5.;
+    let mut long_buffer = stop_distance as f64;
+    let mut short_buffer = stop_distance as f64;
     // To change direction we require twice the buffer
     if let Some(OrderReference::BETWEEN_LONG | OrderReference::OVER_LONG) = last_trade_reference {
-        short_buffer = 10.;
+        short_buffer = 2. * stop_distance as f64;
     }
     // To change direction we require twice the buffer
     if let Some(OrderReference::BETWEEN_SHORT | OrderReference::UNDER_SHORT) = last_trade_reference {
-        long_buffer = 10.;
+        long_buffer = 2. * stop_distance as f64;
     }
-    let is_or_large_enough = opening_range.range_size() >= (min_step_size as f64 * 17.);
+    let is_or_large_enough = opening_range.range_size() >= (3.4 * stop_distance as f64);
     let is_price_between = (level < (opening_range.get_middle_price_high() - short_buffer))
         && (level > (opening_range.get_middle_price_low() + long_buffer));
     is_or_large_enough && is_price_between
 }
 
-fn is_price_under(min_step_size: u8, opening_range: &OpeningRange, bid: f64, ask: f64, last_trade_reference: &Option<OrderReference>) -> bool {
+fn is_price_under(stop_distance: u8, opening_range: &OpeningRange, bid: f64, ask: f64, last_trade_reference: &Option<OrderReference>) -> bool {
     let level = (bid + ask) / 2.;
     let buffer;
     if let Some(OrderReference::BETWEEN_LONG | OrderReference::OVER_LONG) = last_trade_reference {
         // We have twice the buffer when changing direction
-        buffer = min_step_size as f64 * 10.;
+        buffer = stop_distance as f64 * 2.;
     } else {
-        buffer = min_step_size as f64 * 5.;
+        buffer = stop_distance as f64;
     }
     level < (opening_range.get_middle_price_low() - buffer)
 }

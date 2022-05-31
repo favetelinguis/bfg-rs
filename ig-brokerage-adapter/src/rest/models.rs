@@ -216,8 +216,8 @@ impl Default for EditPositionRequest {
             guaranteed_stop: false,
             stop_level: 0.,
             limit_level: None,
-            trailing_stop_distance: 5,
-            trailing_stop_increment: 1,
+            trailing_stop_distance: 0,
+            trailing_stop_increment: 1, // 1 looks to be the min level which is not ideal for markets that move little
             trailing_stop: true,
         }
     }
@@ -296,8 +296,8 @@ impl CreateWorkingOrderRequest {
             deal_reference: reference.to_string(),
             epic: market_info.epic,
             expiry: market_info.expiry,
-            size: market_info.min_lot_size,
-            stop_distance: market_info.min_stop_distance,
+            size: market_info.lot_size,
+            stop_distance: market_info.stop_distance,
             currency_code: market_info.currency,
             ..CreateWorkingOrderRequest::default()
         };
@@ -306,7 +306,7 @@ impl CreateWorkingOrderRequest {
             val.limit_level = Some(target);
         } else {
             // Default target
-            val.limit_distance = Some(market_info.min_stop_distance * 10);
+            val.limit_distance = Some(market_info.stop_distance * 10);
         }
         val
     }

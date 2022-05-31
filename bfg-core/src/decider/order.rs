@@ -358,7 +358,7 @@ impl WorkingOrder {
                     val.state.actual_entry_level,
                 ) =>
             {
-                let stop_distance= val.market_info.min_stop_distance;
+                let stop_distance= val.market_info.stop_distance;
                 let direction_multiple;
                 if let OrderReference::OVER_LONG | OrderReference::BETWEEN_LONG =
                 val.state.reference.clone()
