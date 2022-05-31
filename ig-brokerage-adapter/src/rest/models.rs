@@ -350,7 +350,7 @@ impl Default for OpenPositionRequest {
             guaranteed_stop: false,
             stop_distance: 0,
             limit_distance: 0,
-            force_open: false,
+            force_open: false, //netting if force open = false
             currency_code: CurrencyCode::EUR,
             limit_level: 0.,
         }
