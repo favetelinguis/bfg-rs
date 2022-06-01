@@ -1,4 +1,4 @@
-use bfg_core::decider::{dax_system, Command, Event, OrderEvent, TradeResult, MarketInfo};
+use bfg_core::decider::{Command, Event, OrderEvent, TradeResult, MarketInfo};
 use bfg_core::models::{OhlcPrice, OrderReference, Price};
 use chrono::NaiveTime;
 use ig_brokerage_adapter::realtime::models::{AccountUpdate, DealStatus, MarketState, MarketUpdate, OpenPositionUpdate, OpuStatus, PositionStatus, TradeConfirmationUpdate};
@@ -10,7 +10,7 @@ use std::collections::{HashMap, LinkedList};
 use std::str::FromStr;
 use tokio::sync::mpsc::Sender;
 use bfg_core::decider::order::WorkingOrder;
-use bfg_core::decider::system::{System};
+use bfg_core::decider::system::{System, SystemFactory};
 use ig_brokerage_adapter::errors::BrokerageError;
 use crate::file_writer::write_results_to_file;
 use crate::models::{AccountView, MarketView, ConnectionInformationView, TradeResultView};
@@ -155,9 +155,10 @@ impl BfgIg {
     pub fn new(connection_details: ConnectionDetails, market_infos: Vec<MarketInfo>, ig_tx: Sender<IgEvent>) -> Self {
         let (brokerage_tx, mut ig_rx) = tokio::sync::mpsc::channel::<RealtimeEvent>(10);
         tokio::spawn(async move {
+            let dax_market_info = market_infos.get(0).unwrap().clone(); // TODO we always have one market now will change
             let brokerage = IgBrokerageApi::new(connection_details, market_infos, brokerage_tx).await;
             // TODO create SystemManager that uses market_infos then remove dax_system
-            let mut system_cache = dax_system();
+            let mut system_cache = SystemFactory::new(dax_market_info); // This would be a system manager check order manager but we only have step one here
             let mut market_cache = MarketCache::default();
             let mut trade_confirmation_cache = TradeConfirmationCache::default();
             let mut open_position_cache = OpenPositionCache::default();
@@ -448,10 +449,13 @@ struct TradeConfirmationCache {
 
 impl TradeConfirmationCache {
     fn update(&mut self, update: TradeConfirmationUpdate) -> Option<Event> {
-        let deal_reference: OrderReference = FromStr::from_str(update.deal_reference.as_str())
-            .expect("Only supported deal references should be possible");
-        self.confirms.insert(deal_reference.clone(), update);
-        self.get_current_event(deal_reference.borrow())
+        let deal_reference: Option<OrderReference >= FromStr::from_str(update.deal_reference.as_str()).ok();
+        // Only cara about updates for known OrderReferences, since i get an old snapshot if i have done orders in gui or api i can get a snapshot with
+        // TODO would like to filter out the snapshots for TradeConfigmations
+        if let Some(reference) = deal_reference {
+            self.confirms.insert(reference.clone(), update);
+            self.get_current_event(reference.borrow())
+        } else { None }
     }
 
     fn get_current_event(&self, deal_reference: &OrderReference) -> Option<Event> {

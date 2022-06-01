@@ -72,6 +72,7 @@ pub reference: OrderReference,
 #[derive(Debug, Clone)]
 pub struct MarketInfo {
     pub epic: String,
+    pub bars_in_opening_range: u8,
     pub expiry: String,
     pub currency: String,
     pub stop_distance: u8,
@@ -87,6 +88,7 @@ impl Default for MarketInfo {
     fn default() -> Self {
         Self {
             epic: "".to_string(),
+            bars_in_opening_range: 0,
             expiry: "".to_string(),
             currency: "".to_string(),
             stop_distance: 0,
@@ -105,19 +107,4 @@ impl MarketInfo {
         *now > self.open_time.add(Duration::minutes(1))
             && *now < self.close_time.sub(Duration::minutes(15))
     }
-}
-
-pub fn dax_system() -> System {
-    SystemFactory::new(MarketInfo {
-        epic: "IX.D.DAX.IFMM.IP".to_string(),
-        expiry: "-".to_string(),
-        currency: "EUR".to_string(),
-        stop_distance: 5,
-        lot_size: 1,
-        open_time: NaiveTime::from_hms(8, 0, 0), // London time
-        close_time: NaiveTime::from_hms(16, 30, 0), // London time
-        utc_close_working_order: NaiveTime::from_hms(15, 15, 0), // Utc
-        start_fetch_data: NaiveTime::from_hms(9, 0, 0), // Account time
-        non_trading_days: vec![],
-    })
 }

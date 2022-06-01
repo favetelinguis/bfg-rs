@@ -22,6 +22,7 @@ pub struct InternalMarketInfo {
     pub start_fetch_data: String,
     pub utc_close_working_order: String,
     pub non_trading_days: Vec<String>,
+    pub bars_in_opening_range: u8,
 }
 
 #[derive(Debug, Clone)]
@@ -57,6 +58,7 @@ impl From<InternalMarketInfo> for MarketInfo {
             start_fetch_data: NaiveTime::from_str(val.start_fetch_data.as_str()).expect("Failed to parse start_fetch_data"),
             utc_close_working_order: NaiveTime::from_str(val.utc_close_working_order.as_str()).expect("Failed to parse utc_close_working_order"),
             non_trading_days: val.non_trading_days.iter().map(|i| NaiveDate::from_str(i).expect("Failed to parse non_trading_days")).collect(),
+            bars_in_opening_range: val.bars_in_opening_range,
         }
     }
 }

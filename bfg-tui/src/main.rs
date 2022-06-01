@@ -1,3 +1,4 @@
+use std::env::home_dir;
 use bfg_tui::app::App;
 use bfg_tui::io::handler::IoAsyncHandler;
 use bfg_tui::io::IoEvent;
@@ -5,6 +6,7 @@ use bfg_tui::start_ui;
 use dotenvy::dotenv;
 use eyre::Result;
 use std::sync::Arc;
+use chrono::Utc;
 use log::LevelFilter;
 use tokio::select;
 use bfg_ig::{BfgIg, IgEvent};
@@ -18,9 +20,12 @@ async fn main() -> Result<()> {
     dotenv().ok();
 
     // Configure log
+    let todays_file = Utc::now().date().to_string();
+    let mut path = home_dir().expect("always have a home");
+    path.push(format!("bfg/demo/{}.log", todays_file));
     tui_logger::init_logger(LevelFilter::Info).unwrap();
     tui_logger::set_default_level(LevelFilter::Info);
-    tui_logger::set_log_file("event_log.log").unwrap();
+    tui_logger::set_log_file(path.to_str().expect("The path to log file in bfg/demo fail")).unwrap();
 
     // Channel for IgEvent
     let (ig_tx, mut tui_rx) = tokio::sync::mpsc::channel::<IgEvent>(10);

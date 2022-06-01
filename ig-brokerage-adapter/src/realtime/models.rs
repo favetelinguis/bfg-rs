@@ -262,6 +262,7 @@ pub enum TlcpRequest {
         item: String,
         fields: Vec<String>,
         mode: Mode,
+        snapshot: bool
     },
     UnSubscribe {
         session_id: String,
@@ -308,9 +309,10 @@ impl Display for TlcpRequest {
                 item,
                 fields,
                 mode,
+                snapshot
             } => {
                 let schema = fields.join(" ");
-                let payload = format!("LS_session={session_id}&LS_reqId={req_id}&LS_subId={sub_id}&LS_op=add&LS_mode={mode}&LS_group={item}&LS_schema={schema}&LS_snapshot=true");
+                let payload = format!("LS_session={session_id}&LS_reqId={req_id}&LS_subId={sub_id}&LS_op=add&LS_mode={mode}&LS_group={item}&LS_schema={schema}&LS_snapshot={snapshot}");
                 write!(f, "control\r\n{payload}")
             }
             TlcpRequest::UnSubscribe {

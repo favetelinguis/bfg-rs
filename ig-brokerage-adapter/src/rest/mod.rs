@@ -10,7 +10,7 @@ use reqwest::header::{HeaderMap, ACCEPT, CONTENT_TYPE};
 use reqwest::Client;
 use std::borrow::Borrow;
 use std::marker::PhantomData;
-use std::ops::Add;
+use std::ops::{Add, Sub};
 use std::sync::Arc;
 use chrono::{Duration, NaiveDateTime};
 use log::warn;
@@ -108,9 +108,12 @@ impl IgRestClient<HasSession> {
         start: NaiveDateTime,
         duration: Duration,
     ) -> Result<FetchDataResponse, BrokerageError> {
-        let dt_start_format = start.format("%Y-%m-%d %H:%M:%S").to_string();
-        let dt_end = start.add(duration);
-        let dt_end_format = dt_end.format("%Y-%m-%d %H:%M:%S").to_string();
+        let dt_start_format = start.format("%Y-%m-%dT%H:%M:%S").to_string();
+        // We always substract 1minute since we send number bars wich will always be minimum 1
+        // but in reality will give us 2 bars when start 9:00 and end 9:01
+        // we need start 9:00 and end 9:00 to only get one bar back
+        let dt_end = start.add(duration.sub(Duration::minutes(1)));
+        let dt_end_format = dt_end.format("%Y-%m-%dT%H:%M:%S").to_string();
         let SessionState {
             ref xst, ref cst, ..
         } = &*self.session.lock().await;
@@ -126,8 +129,8 @@ impl IgRestClient<HasSession> {
         );
         headers.insert("X-SECURITY-TOKEN", xst.parse().unwrap());
         headers.insert("CST", cst.parse().unwrap());
-        headers.insert("Version", "2".parse().unwrap());
-        let resource = format!("prices/{epic}/MINUTE/{dt_start_format}/{dt_end_format}");
+        headers.insert("Version", "3".parse().unwrap());
+        let resource = format!("prices/{epic}?resolution=MINUTE&from={dt_start_format}&to={dt_end_format}");
         let url = format!("{}{}", self.connection_details.base_url, resource);
         let res = self
             .client

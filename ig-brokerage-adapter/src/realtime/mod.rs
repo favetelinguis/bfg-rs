@@ -99,6 +99,7 @@ impl IgStreamClient {
                                     req_id: 1,
                                     sub_id: 1,
                                     session_id: session_id.clone(),
+                                    snapshot: true,
                                 }))
                                 .await
                                 .unwrap(); // ACCOUNT
@@ -114,6 +115,7 @@ impl IgStreamClient {
                                     req_id: 2,
                                     sub_id: 2,
                                     session_id: session_id.clone(),
+                                    snapshot: false,
                                 }))
                                 .await
                                 .unwrap(); // TRADE
@@ -133,6 +135,7 @@ impl IgStreamClient {
                                         req_id: market_stream_id,
                                         sub_id: market_stream_id,
                                         session_id: session_id.clone(),
+                                        snapshot: true
                                     }))
                                     .await
                                     .unwrap(); // MARKET

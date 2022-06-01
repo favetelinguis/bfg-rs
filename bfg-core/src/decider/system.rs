@@ -373,13 +373,7 @@ fn create_decide_order_placement_from_opening_range(
     val: SystemMachine<AwaitData>,
     prices: &Vec<OhlcPrice>,
 ) -> SystemMachine<DecideOrderPlacement> {
-    let or_bar = prices.get(0).expect("There should always be one element");
-    let opening_range = OpeningRange {
-        high_ask: or_bar.high.ask,
-        high_bid: or_bar.high.bid,
-        low_ask: or_bar.low.ask,
-        low_bid: or_bar.low.bid,
-    };
+    let opening_range = create_opening_range_from_ohlcs(prices);
     let mut new_state: SystemMachine<DecideOrderPlacement> = val.into();
     new_state.state.opening_range = opening_range;
     new_state
@@ -392,7 +386,7 @@ fn create_fetch_data_command(market_info: &MarketInfo) -> Command {
     Command::FetchData {
         epic: market_info.epic.clone(),
         start: dt_start,
-        duration: Duration::minutes(1),
+        duration: Duration::minutes(market_info.bars_in_opening_range as i64),
     }
 }
 
@@ -484,14 +478,64 @@ impl OrderManager {
     }
 }
 
+// Assumes prices is never empty this must be checked elsewhere we always need to be able to create
+fn create_opening_range_from_ohlcs(prices: &Vec<OhlcPrice>) -> OpeningRange {
+    let or_bar = prices.get(0).expect("There should always be one element");
+    let mut highest_ask = 0.;
+    let mut highest_bid = 0.;
+    let mut lowest_ask = 1000000.; // We assume no epic will have a low higher then this
+    let mut lowest_bid = 1000000.; // We assume no epic will have a low higher then this
+    for ohlc in prices {
+        if ohlc.high.ask > highest_ask {
+            highest_ask = ohlc.high.ask;
+            highest_bid = ohlc.high.bid;
+        }
+        if ohlc.low.ask < lowest_ask {
+            lowest_ask = ohlc.low.ask;
+            lowest_bid = ohlc.low.bid;
+        }
+    }
+    OpeningRange {
+        high_ask: highest_ask,
+        high_bid: highest_bid,
+        low_ask: lowest_ask,
+        low_bid: lowest_bid,
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
-    use crate::decider::system::{Setup, System, SystemFactory, SystemMachine};
+    use crate::decider::system::{create_opening_range_from_ohlcs, OpeningRange, Setup, System, SystemFactory, SystemMachine};
     use crate::decider::{Command, Event, OrderEvent, OrderReference};
     use crate::models::{OhlcPrice, Price};
     use chrono::Utc;
 
+    #[test]
+    fn will_get_corect_opening_range() {
+        let prices = vec![
+            OhlcPrice {
+                high: Price {bid: 2., ask: 3.,},
+                low: Price {bid: 1., ask: 2.,},
+                open: Price {bid: 2., ask: 3.,},
+                close: Price {bid: 2., ask: 3.,},
+            },
+            OhlcPrice {
+                high: Price {bid: 2., ask: 3.,},
+                low: Price {bid: 2., ask: 3.,},
+                open: Price {bid: 2., ask: 3.,},
+                close: Price {bid: 2., ask: 3.,},
+            },
+            OhlcPrice {
+                high: Price {bid: 4., ask: 5.,},
+                low: Price {bid: 2., ask: 3.,},
+                open: Price {bid: 2., ask: 3.,},
+                close: Price {bid: 2., ask: 3.,},
+            },
+        ];
+        let opening_range = create_opening_range_from_ohlcs(&prices);
+        let a = 1;
+    }
     #[test]
     fn it_works_basic() {
         let sut = SystemFactory::new(Default::default());

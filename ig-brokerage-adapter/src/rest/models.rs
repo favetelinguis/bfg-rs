@@ -382,7 +382,6 @@ pub struct FetchDataResponse {
     pub prices: Vec<DataPointResponse>,
     #[serde(rename = "instrumentType")]
     pub instrument_type: String,
-    pub allowance: Allowance,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]

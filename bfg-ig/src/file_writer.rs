@@ -13,7 +13,7 @@ pub fn write_results_to_file(result: TradeResult) {
         if let Ok(mut file)  = tokio::fs::OpenOptions::new()
             .append(true).create_new(true).open(path.as_path()).await {
             let headers = "epic,reference,wanted_entry_level,entry_time,actual_entry_level,exit_time,exit_level";
-            let initial_write = format!("{}\r\n{}\r\n", headers, to_csv(result));
+            let initial_write = format!("{}\r\n{}", headers, to_csv(result));
             file.write(initial_write.as_bytes()).await;
         } else {
             let mut file =  tokio::fs::OpenOptions::new()
