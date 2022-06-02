@@ -16,3 +16,4 @@ Since Date is set once at start the system can not run over nigh and assume trad
 
 ## Before live
 - Change the multiple of minimum range its 20 need to be some reasonable with regards to risk i can take.
+- Remove q as a quit command and requre only ctrl-c for quit
