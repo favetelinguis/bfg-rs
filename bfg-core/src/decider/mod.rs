@@ -43,16 +43,19 @@ pub enum Command {
         price: f64,
         reference: OrderReference,
         market_info: MarketInfo,
-        target_price: Option<f64>,
+        target_distance: usize,
+        stop_distance: usize,
     },
     CancelWorkingOrder {
+        epic: String,
         reference_to_cancel: OrderReference,
     },
     UpdatePosition {
+        epic: String,
         deal_id: String,
         level: f64,
-        trailing_stop_distance: u8,
-        target_level: Option<f64>,
+        trailing_stop_distance: usize,
+        target_distance: usize,
     },
     PublishTradeResults(TradeResult),
     FatalFailure(String),
@@ -60,22 +63,24 @@ pub enum Command {
 
 #[derive(Debug, Clone)]
 pub struct TradeResult {
-pub wanted_entry_level: f64,
-pub actual_entry_level: f64,
-pub entry_time: DateTime<Utc>,
-pub exit_time: DateTime<Utc>,
-pub exit_level: f64,
-pub reference: OrderReference,
+    pub wanted_entry_level: f64,
+    pub actual_entry_level: f64,
+    pub entry_time: DateTime<Utc>,
+    pub exit_time: DateTime<Utc>,
+    pub exit_level: f64,
+    pub reference: OrderReference,
     pub epic: String,
+    pub opening_range_size: f64,
+    pub strategy_version: usize
 }
 
 #[derive(Debug, Clone)]
 pub struct MarketInfo {
     pub epic: String,
     pub bars_in_opening_range: u8,
+    pub min_tradable_opening_range: f64,
     pub expiry: String,
     pub currency: String,
-    pub stop_distance: u8,
     pub lot_size: u8,
     pub open_time: NaiveTime,
     pub close_time: NaiveTime,
@@ -89,9 +94,9 @@ impl Default for MarketInfo {
         Self {
             epic: "".to_string(),
             bars_in_opening_range: 0,
+            min_tradable_opening_range: 0.0,
             expiry: "".to_string(),
             currency: "".to_string(),
-            stop_distance: 0,
             lot_size: 0,
             open_time: Utc::now().time().sub(Duration::minutes(10)),
             close_time: Utc::now().time().add(Duration::hours(5)),
@@ -106,5 +111,8 @@ impl MarketInfo {
     pub fn is_inside_trading_hours(&self, now: &NaiveTime) -> bool {
         *now > self.open_time.add(Duration::minutes(1))
             && *now < self.close_time.sub(Duration::minutes(15))
+    }
+    pub fn stop_distance(&self, opening_range_size: f64) -> usize {
+        ((opening_range_size - 1.) / 3.).floor() as usize
     }
 }

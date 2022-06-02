@@ -1,7 +1,10 @@
+use std::str::FromStr;
 use crate::realtime::models::Direction;
 use chrono::{NaiveDateTime, NaiveTime, Utc};
+use log::info;
 use serde::{Deserialize, Serialize};
 use bfg_core::decider::MarketInfo;
+use bfg_core::models::{get_reference_id, OrderReference};
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ApiResponse(pub String);
@@ -198,14 +201,14 @@ pub struct RefreshTokenRequest {
 pub struct EditPositionRequest {
     #[serde(rename = "guaranteedStop")]
     pub guaranteed_stop: bool,
-    #[serde(rename = "limitLevel")]
-    pub limit_level: Option<f64>,
+    #[serde(rename = "limitDistance")]
+    pub limit_distance: usize,
     #[serde(rename = "stopLevel")]
     pub stop_level: f64,
     #[serde(rename = "trailingStop")]
     pub trailing_stop: bool,
     #[serde(rename = "trailingStopDistance")]
-    pub trailing_stop_distance: u8,
+    pub trailing_stop_distance: usize,
     #[serde(rename = "trailingStopIncrement")]
     pub trailing_stop_increment: u8,
 }
@@ -215,7 +218,7 @@ impl Default for EditPositionRequest {
         Self {
             guaranteed_stop: false,
             stop_level: 0.,
-            limit_level: None,
+            limit_distance: 0,
             trailing_stop_distance: 0,
             trailing_stop_increment: 1, // 1 looks to be the min level which is not ideal for markets that move little
             trailing_stop: true,
@@ -224,11 +227,11 @@ impl Default for EditPositionRequest {
 }
 
 impl EditPositionRequest {
-    pub fn new(stop_level: f64, trailing_stop_distance: u8, target_level: Option<f64>) -> Self {
+    pub fn new(stop_level: f64, trailing_stop_distance: usize, target_distance: usize) -> Self {
         Self {
             stop_level,
             trailing_stop_distance,
-            limit_level: target_level,
+            limit_distance: target_distance,
             ..EditPositionRequest::default()
         }
     }
@@ -250,27 +253,21 @@ pub struct CreateWorkingOrderRequest {
     pub guaranteed_stop: bool,
     pub level: f64,
     #[serde(rename = "limitDistance")]
-    pub limit_distance: Option<u8>,
+    pub limit_distance: usize,
     pub size: u8,
     #[serde(rename = "stopDistance")]
-    pub stop_distance: u8,
+    pub stop_distance: usize,
     #[serde(rename = "timeInForce")]
     pub time_in_force: String,
     #[serde(rename = "type")]
     pub working_order_type: WorkingOrderType,
-    #[serde(rename = "limitLevel")]
-    pub limit_level: Option<f64>,
 }
 
 impl Default for CreateWorkingOrderRequest {
     fn default() -> Self {
-        let now = Utc::now();
-        let dax_utc_close_time = NaiveTime::from_hms(15, 15, 0); // DAX close at 17:30 CET but want to close out WO 15 min before close sommartid CET = Stockholm tid
-        let dt_start = NaiveDateTime::new(now.naive_utc().date(), dax_utc_close_time);
-        let dt_start_format = dt_start.format("%Y/%m/%d %H:%M:%S").to_string();
         Self {
             time_in_force: "GOOD_TILL_DATE".to_string(),
-            good_till_date: dt_start_format,
+            good_till_date: "".to_string(),
             deal_reference: "CHANGEME".to_string(),
             epic: "IX.D.DAX.IFMM.IP".to_string(),
             expiry: "-".to_string(),
@@ -280,35 +277,35 @@ impl Default for CreateWorkingOrderRequest {
             level: 0.,
             guaranteed_stop: false,
             stop_distance: 0,
-            limit_distance: None,
+            limit_distance: 0,
             force_open: false, // Is this to be like netting? Dont understand this
             currency_code: "EUR".to_string(),
-            limit_level: None,
         }
     }
 }
 
+/// Tricky here is that we need to apend the expic and encode the reference as usize since we need to keep the
+/// reference unique between markets and orders
 impl CreateWorkingOrderRequest {
-    pub fn new(direction: Direction, level: f64, reference: &str, market_info: MarketInfo, target_price: Option<f64>) -> Self {
-        let mut val = Self {
+    pub fn new(direction: Direction, level: f64, reference: &str, market_info: MarketInfo, target_distance: usize, stop_distance: usize) -> Self {
+        let ref_id = get_reference_id(reference).to_string();
+        let deal_reference = format!("{}{}", ref_id, market_info.epic).replace(".", ""); // needed to have unique references
+        let now = Utc::now();
+        let close_today = NaiveDateTime::new(now.naive_utc().date(), market_info.utc_close_working_order);
+        let close_today_format = close_today.format("%Y/%m/%d %H:%M:%S").to_string();
+        Self {
+            good_till_date: close_today_format,
             direction,
             level,
-            deal_reference: reference.to_string(),
+            deal_reference,
             epic: market_info.epic,
             expiry: market_info.expiry,
             size: market_info.lot_size,
-            stop_distance: market_info.stop_distance,
+            stop_distance,
+            limit_distance: target_distance,
             currency_code: market_info.currency,
             ..CreateWorkingOrderRequest::default()
-        };
-        if let Some(target) = target_price {
-            // If we specify a target
-            val.limit_level = Some(target);
-        } else {
-            // Default target
-            val.limit_distance = Some(market_info.stop_distance * 10);
         }
-        val
     }
 }
 

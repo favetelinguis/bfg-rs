@@ -9,7 +9,7 @@ use std::sync::Arc;
 use chrono::Utc;
 use log::LevelFilter;
 use tokio::select;
-use bfg_ig::{BfgIg, IgEvent};
+use bfg_ig::{IgEvent, spawn_bfg};
 use bfg_ig::models::ConnectionDetails;
 use crate::config::BfgConfig;
 
@@ -47,17 +47,15 @@ async fn main() -> Result<()> {
 
     // Run Trading system
     let trade_system = tokio::spawn(async move {
-        // Read config
         let config = BfgConfig::new().await;
-        // TODO BfgIg should prob just be a function
-        let _ = BfgIg::new(config.connection_details, config.epics, ig_tx);
+        spawn_bfg(config.connection_details, config.epics, ig_tx);
         while let Some(event) = tui_rx.recv().await {
             let mut gui = copy_gui_state_system.write().await;
             match event {
-                IgEvent::MarketView(current_market) => gui.market = current_market,
-                IgEvent::SystemView(current_system) => gui.system = current_system,
+                IgEvent::MarketView(epic, current_market) => gui.markets.update(epic, current_market),
+                IgEvent::SystemView(epic, current_system) => gui.systems.update(epic, current_system),
                 IgEvent::AccountView(current_account) => gui.account = current_account,
-                IgEvent::TradesResultsView(current_results) => gui.results = current_results,
+                IgEvent::TradesResultsView(result) => gui.add_trade_result(result),
                 IgEvent::ConnectionView(current_connection) => gui.connection_information = current_connection,
             }
         }

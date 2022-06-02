@@ -12,7 +12,7 @@ pub fn write_results_to_file(result: TradeResult) {
         path.push(format!("bfg/demo/{}.csv", todays_file));
         if let Ok(mut file)  = tokio::fs::OpenOptions::new()
             .append(true).create_new(true).open(path.as_path()).await {
-            let headers = "epic,reference,wanted_entry_level,entry_time,actual_entry_level,exit_time,exit_level";
+            let headers = "epic,reference,wanted_entry_level,entry_time,actual_entry_level,exit_time,exit_level,opening_range_size,strategy_version";
             let initial_write = format!("{}\r\n{}", headers, to_csv(result));
             file.write(initial_write.as_bytes()).await;
         } else {
@@ -28,7 +28,7 @@ pub fn write_results_to_file(result: TradeResult) {
         let actual_entry_level = format!("{:.1}", result.actual_entry_level);
         let exit_level = format!("{:.1}", result.exit_level);
         let reference = format!("{:?}", result.reference);
-        format!("{},{},{},{},{},{},{}\r\n", result.epic, reference, wanted_entry_level, result.entry_time, actual_entry_level, result.exit_time, exit_level)
+        format!("{},{},{},{},{},{},{},{},{}\r\n", result.epic, reference, wanted_entry_level, result.entry_time, actual_entry_level, result.exit_time, exit_level, result.opening_range_size, result.strategy_version)
     }
 
 #[cfg(test)]

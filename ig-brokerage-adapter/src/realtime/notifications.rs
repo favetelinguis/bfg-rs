@@ -2,6 +2,7 @@ use crate::realtime::models::{AccountUpdate, MarketState, OpenPositionUpdate, Tr
 use std::borrow::BorrowMut;
 use std::str::FromStr;
 use log::warn;
+use bfg_core::models::get_reference_from_id;
 use crate::MarketUpdate;
 
 type MarketState2 = (
@@ -27,6 +28,9 @@ type AccountState = (
     Option<f64>,
 );
 
+/// We need to keep the reference unique between markets that is why we append the epic when creating the order.
+/// Then we remove it here, we also need to shrink the size since there is a max size in ig api of 30chars that is why we encode the
+/// reference as a usize
 pub fn parse_trade_update(
     msg: &str,
 ) -> (
@@ -37,17 +41,35 @@ pub fn parse_trade_update(
     let parts: Vec<&str> = msg.trim().split('|').collect();
 
     let conf = if parts[0].starts_with('{') {
-        serde_json::from_str::<TradeConfirmationUpdate>(parts[0]).ok()
+        if let Some(mut confirmation) = serde_json::from_str::<TradeConfirmationUpdate>(parts[0]).ok() {
+            let ref_id = confirmation.deal_reference.chars().next().unwrap();
+            if let Some(ref_id) = ref_id.to_digit(10) { // if i palce some order in rest companion it will not have correct reference and i will get it at start as the anoying bug that i need to skip the initial update message
+                confirmation.deal_reference = get_reference_from_id(ref_id);
+                Some(confirmation)
+            } else { None }
+        } else { None }
     } else {
         None
     };
     let opu = if parts[1].starts_with('{') {
-        serde_json::from_str::<OpenPositionUpdate>(parts[1]).ok()
+        if let Some(mut confirmation) = serde_json::from_str::<OpenPositionUpdate>(parts[1]).ok() {
+            let ref_id = confirmation.deal_reference.chars().next().unwrap();
+            let ref_id = ref_id.to_digit(10).unwrap();
+            confirmation.deal_reference = get_reference_from_id(ref_id);
+            Some(confirmation)
+        } else { None }
+
     } else {
         None
     };
     let wou = if parts[2].starts_with('{') {
-        serde_json::from_str::<WorkingOrderUpdate>(parts[2]).ok()
+        if let Some(mut confirmation) = serde_json::from_str::<WorkingOrderUpdate>(parts[2]).ok() {
+            let ref_id = confirmation.deal_reference.chars().next().unwrap();
+            let ref_id = ref_id.to_digit(10).unwrap();
+            confirmation.deal_reference = get_reference_from_id(ref_id);
+            Some(confirmation)
+        } else { None }
+
     } else {
         None
     };

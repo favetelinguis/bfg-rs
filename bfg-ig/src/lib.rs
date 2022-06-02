@@ -14,17 +14,19 @@ use bfg_core::decider::system::{System, SystemFactory};
 use ig_brokerage_adapter::errors::BrokerageError;
 use crate::file_writer::write_results_to_file;
 use crate::models::{AccountView, MarketView, ConnectionInformationView, TradeResultView};
+use crate::systems_manager::SystemsManager;
 
 pub mod models;
 mod file_writer;
+mod systems_manager;
 
 #[derive(Debug)]
 pub enum IgEvent {
-    MarketView(MarketView),
+    MarketView(String, MarketView),
     ConnectionView(ConnectionInformationView),
-    TradesResultsView(Vec<TradeResultView>),
+    TradesResultsView(TradeResultView),
     AccountView(AccountView),
-    SystemView(SystemView)
+    SystemView(String, SystemView)
 }
 
 #[derive(Debug, Default)]
@@ -42,31 +44,6 @@ pub struct SystemView {
 pub struct OrderView {
     pub reference: String,
     pub state: String,
-}
-
-#[derive(Debug, Default)]
-struct TradeResultsCache {
-    trades: Vec<TradeResult>,
-}
-
-impl TradeResultsCache {
-    fn update(&mut self, update: TradeResult) {
-        self.trades.push(update);
-    }
-
-    fn get_current_view(&self) -> IgEvent {
-        let views = self.trades.iter()
-            .map(|tr| TradeResultView {
-                wanted_entry_level: tr.wanted_entry_level,
-                actual_entry_level: tr.actual_entry_level,
-                entry_time: tr.entry_time.to_string(),
-                exit_time: tr.exit_time.to_string(),
-                exit_level: tr.exit_level,
-                reference: format!("{:?}", tr.reference),
-                epic: tr.epic.clone(),
-            }).collect();
-        IgEvent::TradesResultsView(views)
-    }
 }
 
 #[derive(Debug, Default)]
@@ -147,200 +124,154 @@ impl AccountCache {
     }
 }
 
-pub struct BfgIg {} // TODO why use a struct just spawn in a function
+/// Spawns a new system and handles all the events from brokerage, system generates Commands that are
+/// executed hare also, ig_tx send back updates for the GUI to render
+pub fn spawn_bfg(connection_details: ConnectionDetails, market_infos: Vec<MarketInfo>, ig_tx: Sender<IgEvent>) {
+    let (brokerage_tx, mut ig_rx) = tokio::sync::mpsc::channel::<RealtimeEvent>(10);
+    tokio::spawn(async move {
+        let mut systems_manager = SystemsManager::new(&market_infos[..]);
+        let brokerage = IgBrokerageApi::new(connection_details, market_infos, brokerage_tx).await;
+        let mut market_cache = MarketCache::default();
+        let mut trade_confirmation_cache = TradeConfirmationCache::default();
+        let mut open_position_cache = OpenPositionCache::default();
+        let mut account_cache = AccountCache::default();
+        while let Some(event) = ig_rx.recv().await {
+            let core_event: Option<(String, Event)> = match event {
+                RealtimeEvent::MarketEvent(update) => {
+                    let system_event = market_cache.update(update);
+                    ig_tx.send(market_cache.get_current_view()).await.expect("Sending message failure");
+                    system_event
+                },
+                RealtimeEvent::TradeConfirmation(update) => {
+                    trade_confirmation_cache.update(update)
+                }
+                RealtimeEvent::AccountPositionUpdate(update) => {
+                    open_position_cache.update(update)
+                }
+                RealtimeEvent::AccountEvent(update) => {
+                    account_cache.update(update);
+                    ig_tx.send(account_cache.get_current_view()).await.expect("Sending message failure");
+                    None
+                },
+                RealtimeEvent::WorkingOrderUpdate(_) => None, // Waiting for reply if WOU is deprecated
+                RealtimeEvent::StreamStatus(status) => {
+                    ig_tx.send(IgEvent::ConnectionView(ConnectionInformationView {
+                        stream_status: status
+                    })).await.expect("Sending message failure");
+                    None
+                }
+            };
 
-impl BfgIg {
-    /// Spawns a new system and handles all the events from brokerage, system generates Commands that are
-    /// executed hare also, ig_tx send back updates for the GUI to render
-    pub fn new(connection_details: ConnectionDetails, market_infos: Vec<MarketInfo>, ig_tx: Sender<IgEvent>) -> Self {
-        let (brokerage_tx, mut ig_rx) = tokio::sync::mpsc::channel::<RealtimeEvent>(10);
-        tokio::spawn(async move {
-            let dax_market_info = market_infos.get(0).unwrap().clone(); // TODO we always have one market now will change
-            let brokerage = IgBrokerageApi::new(connection_details, market_infos, brokerage_tx).await;
-            // TODO create SystemManager that uses market_infos then remove dax_system
-            let mut system_cache = SystemFactory::new(dax_market_info); // This would be a system manager check order manager but we only have step one here
-            let mut market_cache = MarketCache::default();
-            let mut trade_confirmation_cache = TradeConfirmationCache::default();
-            let mut open_position_cache = OpenPositionCache::default();
-            let mut trade_results_cache = TradeResultsCache::default();
-            let mut account_cache = AccountCache::default();
-            while let Some(event) = ig_rx.recv().await {
-                let core_event = match event {
-                    RealtimeEvent::MarketEvent(update) => {
-                        let system_event = market_cache.update(update);
-                        ig_tx.send(market_cache.get_current_view()).await.expect("Sending message failure");
-                        system_event
-                    },
-                    RealtimeEvent::TradeConfirmation(update) => {
-                        trade_confirmation_cache.update(update)
-                    }
-                    RealtimeEvent::AccountPositionUpdate(update) => {
-                        open_position_cache.update(update)
-                    }
-                    RealtimeEvent::AccountEvent(update) => {
-                        account_cache.update(update);
-                        ig_tx.send(account_cache.get_current_view()).await.expect("Sending message failure");
-                        None
-                    },
-                    RealtimeEvent::WorkingOrderUpdate(_) => None, // Waiting for reply if WOU is deprecated
-                    RealtimeEvent::StreamStatus(status) => {
-                        ig_tx.send(IgEvent::ConnectionView(ConnectionInformationView {
-                            stream_status: status
-                        })).await.expect("Sending message failure");
-                        None
-                    }
-                };
-
-                // If there was an event that will effect the trade system then execute it
-                if let Some(bfg_e) = core_event {
-                    let mut events: LinkedList<Event> = LinkedList::new();
-                    events.push_back(bfg_e);
-                    // Event -> Command -> Maybe Event -> Maybe Command
-                    // This looping is so that commands can generate more events
-                    while let Some(e) = events.pop_front() {
-                        let (new_system, commands) = system_cache.step(e.borrow());
-                        system_cache = new_system;
-                        for c in commands {
-                            let more_events = match c {
-                                Command::FetchData {epic, start, duration } => {
-                                    info!("Executing: FetchData");
-                                    match brokerage
-                                        .rest
-                                        .fetch_data(epic.as_str(), start, duration)
-                                        .await
-                                    {
-                                        Ok(result) =>
-                                        vec![Event::Data {
-                                            prices: extract_prices(result),
-                                        }],
-                                        Err(BrokerageError(error)) =>
-                                        vec![Event::Error(error)]
-                                    }
+            // If there was an event that will effect the trade system then execute it
+            if let Some(bfg_e) = core_event {
+                let mut events: LinkedList<(String, Event)> = LinkedList::new();
+                events.push_back(bfg_e);
+                // Event -> Command -> Maybe Event -> Maybe Command
+                // This looping is so that commands can generate more events
+                while let Some((epic, event)) = events.pop_front() {
+                    let commands = systems_manager.step_one(epic.clone(), &event) ;
+                    for c in commands {
+                        let more_events: Vec<(String, Event)> = match c {
+                            Command::FetchData {epic, start, duration } => {
+                                info!("Executing: FetchData");
+                                match brokerage
+                                    .rest
+                                    .fetch_data(epic.as_str(), start, duration)
+                                    .await
+                                {
+                                    Ok(result) =>
+                                    vec![(epic, Event::Data {
+                                        prices: extract_prices(result),
+                                    })],
+                                    Err(BrokerageError(error)) =>
+                                    vec![(epic, Event::Error(error))]
                                 }
-                                Command::CreateWorkingOrder {
-                                    direction,
-                                    price,
-                                    reference,
-                                    market_info,
-                                    target_price,
-                                } => {
-                                    info!("Executing: CreateWorkingOrder");
-                                    if let Err(BrokerageError(error)) = brokerage
-                                        .rest
-                                        .open_working_order(direction, price, format!("{:?}", reference).as_str(), market_info, target_price)
-                                        .await
-                                    {
-                                        vec![Event::Error(error
-                                        )]
-                                    } else {
-                                        vec![]
-                                    }
-                                }
-                                Command::UpdatePosition { deal_id, level, trailing_stop_distance, target_level } => {
-                                    info!("Executing: UpdatePosition");
-                                    if let Err(BrokerageError(error)) = brokerage
-                                        .rest
-                                        .edit_position(deal_id.as_str(), level, trailing_stop_distance, target_level)
-                                        .await
-                                    {
-                                        vec![Event::Error(error
-                                        )]
-                                    } else {
-                                        vec![]
-                                    }
-                                }
-                                /// Use the provided reference and the order cache to find order id to cancel
-                                Command::CancelWorkingOrder {
-                                    ref reference_to_cancel,
-                                } => {
-                                    info!("Executing: CancelWorkingOrder");
-                                    if let Some(deal_id) =
-                                        trade_confirmation_cache.get_deal_id(reference_to_cancel)
-                                    {
-                                        if let Err(BrokerageError(error)) = brokerage
-                                            .rest
-                                            .delete_working_order(deal_id.as_str())
-                                            .await
-                                        {
-                                            vec![Event::Error(error
-                                            )]
-                                        } else {
-                                            vec![]
-                                        }
-                                    } else { vec![] }
-                                }
-                                Command::PublishTradeResults(update) => {
-                                    info!("Executing: PublishTradeResults");
-                                    write_results_to_file(update.clone());
-                                    trade_results_cache.update(update.clone());
-                                    ig_tx.send(trade_results_cache.get_current_view()).await.expect("Failed sending message");
-                                    vec![Event::PositionExit(update.reference.clone())]
-                                }
-                                Command::FatalFailure(reason) => {
-                                    info!("Executing: FatalFailure with reason {}", reason);
+                            }
+                            Command::CreateWorkingOrder {
+                                direction,
+                                price,
+                                reference,
+                                market_info,
+                                target_distance,
+                                stop_distance
+                            } => {
+                                info!("Executing: CreateWorkingOrder");
+                                let epic = market_info.epic.clone();
+                                if let Err(BrokerageError(error)) = brokerage
+                                    .rest
+                                    .open_working_order(direction, price, format!("{:?}", reference).as_str(), market_info, target_distance, stop_distance)
+                                    .await
+                                {
+                                    vec![(epic, Event::Error(error
+                                    ))]
+                                } else {
                                     vec![]
                                 }
-                            };
-                            events.extend(more_events);
-                        }
+                            }
+                            Command::UpdatePosition {epic, deal_id, level, trailing_stop_distance, target_distance} => {
+                                info!("Executing: UpdatePosition");
+                                if let Err(BrokerageError(error)) = brokerage
+                                    .rest
+                                    .edit_position(deal_id.as_str(), level, trailing_stop_distance, target_distance)
+                                    .await
+                                {
+                                    vec![(epic, Event::Error(error
+                                    ))]
+                                } else {
+                                    vec![]
+                                }
+                            }
+                            /// Use the provided reference and the order cache to find order id to cancel
+                            Command::CancelWorkingOrder {
+                                epic,
+                                ref reference_to_cancel,
+                            } => {
+                                info!("Executing: CancelWorkingOrder");
+                                if let Some(deal_id) =
+                                    trade_confirmation_cache.get_deal_id(reference_to_cancel)
+                                {
+                                    if let Err(BrokerageError(error)) = brokerage
+                                        .rest
+                                        .delete_working_order(deal_id.as_str())
+                                        .await
+                                    {
+                                        vec![(epic, Event::Error(error
+                                        ))]
+                                    } else {
+                                        vec![]
+                                    }
+                                } else { vec![] }
+                            }
+                            Command::PublishTradeResults(tr) => {
+                                info!("Executing: PublishTradeResults");
+                                let epic = tr.epic.clone();
+                                write_results_to_file(tr.clone());
+                                let view = TradeResultView {
+                                        wanted_entry_level: tr.wanted_entry_level,
+                                        actual_entry_level: tr.actual_entry_level,
+                                        entry_time: tr.entry_time.to_string(),
+                                        exit_time: tr.exit_time.to_string(),
+                                        exit_level: tr.exit_level,
+                                        reference: format!("{:?}", tr.reference),
+                                        epic: tr.epic.clone(),
+                                    };
+                                ig_tx.send(IgEvent::TradesResultsView(view)).await.expect("Failed sending message");
+                                vec![(epic, Event::PositionExit(tr.reference.clone()))]
+                            }
+                            Command::FatalFailure(reason) => {
+                                info!("Executing: FatalFailure with reason {}", reason);
+                                vec![]
+                            }
+                        };
+                        events.extend(more_events);
                     }
+                    ig_tx.send(systems_manager.get_current_system_view(epic.clone())).await.expect("Failed sending message");
                 }
-                // Send updated system view on each event, might not always have a changed state so could optimize
-                ig_tx.send(get_current_system_view(system_cache.borrow())).await.expect("Failed sending message");
             }
-        });
-        return BfgIg {};
-    }
+        }
+    });
 }
 
-fn get_current_system_view(system: &System) -> IgEvent {
-    let view = match system {
-        System::Setup(val) => SystemView {
-            state: String::from("Setup"),
-            epic: val.market_info.epic.clone(),
-            ..Default::default()
-        },
-        System::AwaitData(val) => SystemView {
-            state: String::from("AwaitData"),
-            epic: val.market_info.epic.clone(),
-            ..Default::default()
-        },
-        System::DecideOrderPlacement(val) =>
-            SystemView {
-                state: String::from("DecideOrderPlacement"),
-                opening_range_high_ask: Some(val.state.opening_range.high_ask),
-                opening_range_high_bid: Some(val.state.opening_range.high_bid),
-                opening_range_low_ask: Some(val.state.opening_range.low_ask),
-                opening_range_low_bid: Some(val.state.opening_range.low_bid),
-                epic: val.market_info.epic.clone(),
-                ..Default::default()
-            },
-        System::ManageOrders(val) => SystemView {
-            state: String::from("ManageOrders"),
-            opening_range_high_ask: Some(val.state.opening_range.high_ask),
-            opening_range_high_bid: Some(val.state.opening_range.high_bid),
-            opening_range_low_ask: Some(val.state.opening_range.low_ask),
-            opening_range_low_bid: Some(val.state.opening_range.low_bid),
-            orders: create_order_view(val.state.order_manager.get_orders()),
-            epic: val.market_info.epic.clone(),
-            ..Default::default()
-        },
-        System::Error(val) => SystemView {
-            state: String::from("Error"),
-            epic: val.market_info.epic.clone(),
-            ..Default::default()
-        },
-    };
-    IgEvent::SystemView(view)
-}
-
-fn create_order_view(orders: &HashMap<OrderReference, WorkingOrder>) -> Vec<OrderView> {
-    orders.iter()
-        .map(|(k, v)| OrderView {
-            reference: format!("{:?}", k),
-            state: v.to_string(),
-        }).collect()
-}
 
 fn extract_prices(res: FetchDataResponse) -> Vec<OhlcPrice> {
     res.prices
@@ -378,7 +309,7 @@ pub struct MarketCache {
 
 impl MarketCache {
     fn get_current_view(&self) -> IgEvent {
-        IgEvent::MarketView(MarketView {
+        IgEvent::MarketView(self.epic.clone(),MarketView {
             epic: self.epic.clone(),
             bid: self.bid,
             ask: self.ask,
@@ -389,7 +320,7 @@ impl MarketCache {
     }
     /// Only update fields that has new values
     /// Returns the latest copy of the market
-    fn update(&mut self, update: MarketUpdate) -> Option<Event> {
+    fn update(&mut self, update: MarketUpdate) -> Option<(String, Event)> {
         self.epic = update.epic;
         if update.update_time.is_some() {
             self.update_time =
@@ -412,7 +343,7 @@ impl MarketCache {
 
     /// If there is a full market, that is all field are filled and the state
     /// of the market is Tradable and the market is not delayed
-    fn get_current_market_event(&self) -> Option<Event> {
+    fn get_current_market_event(&self) -> Option<(String, Event)> {
         if self.is_filled_for_event() {
             if let Self {
                 market_delay: Some(0),
@@ -420,14 +351,14 @@ impl MarketCache {
                 ..
             } = self
             {
-                return Some(Event::Market {
+                return Some((self.epic.clone(), Event::Market {
                     update_time: self
                         .update_time
                         .expect("we know update_time always has value"),
                     bid: self.bid.expect("we know bid always has value"),
                     ask: self.ask.expect("we know ask always has value"),
                     epic: self.epic.clone(),
-                });
+                }));
             }
         }
         None
@@ -448,8 +379,8 @@ struct TradeConfirmationCache {
 }
 
 impl TradeConfirmationCache {
-    fn update(&mut self, update: TradeConfirmationUpdate) -> Option<Event> {
-        let deal_reference: Option<OrderReference >= FromStr::from_str(update.deal_reference.as_str()).ok();
+    fn update(&mut self, update: TradeConfirmationUpdate) -> Option<(String, Event)> {
+        let deal_reference: Option<OrderReference> = FromStr::from_str(update.deal_reference.as_str()).ok();
         // Only cara about updates for known OrderReferences, since i get an old snapshot if i have done orders in gui or api i can get a snapshot with
         // TODO would like to filter out the snapshots for TradeConfigmations
         if let Some(reference) = deal_reference {
@@ -458,43 +389,47 @@ impl TradeConfirmationCache {
         } else { None }
     }
 
-    fn get_current_event(&self, deal_reference: &OrderReference) -> Option<Event> {
+    fn get_current_event(&self, deal_reference: &OrderReference) -> Option<(String, Event)> {
         let confirmation = self.confirms.get(deal_reference);
         if let Some(confirmation) = confirmation {
             return match confirmation {
                 TradeConfirmationUpdate {
+                    epic,
                     level: Some(level),
                     status: Some(PositionStatus::OPEN),
                     deal_status: DealStatus::ACCEPTED,
                     deal_id,
                     ..
-                } => Some(Event::Order(
+                } => Some((epic.clone(), Event::Order(
                     OrderEvent::ConfirmationOpenAccepted { level: *level, deal_id: deal_id.clone() },
                     deal_reference.clone(),
-                )),
+                ))),
                 TradeConfirmationUpdate {
+                    epic,
                     status: Some(PositionStatus::AMENDED),
                     deal_status: DealStatus::ACCEPTED,
                     ..
-                } => Some(Event::Order(
+                } => Some((epic.clone(), Event::Order(
                     OrderEvent::ConfirmationAmendedAccepted,
                     deal_reference.clone(),
-                )),
+                ))),
                 TradeConfirmationUpdate {
+                    epic,
                     deal_status: DealStatus::REJECTED,
                     ..
-                } => Some(Event::Order(
+                } => Some((epic.clone(), Event::Order(
                     OrderEvent::ConfirmationRejection,
                     deal_reference.clone(),
-                )),
+                ))),
                 TradeConfirmationUpdate {
+                    epic,
                     status: Some(PositionStatus::DELETED),
                     deal_status: DealStatus::ACCEPTED,
                     ..
-                } => Some(Event::Order(
+                } => Some((epic.clone(), Event::Order(
                     OrderEvent::ConfirmationDeleteAccepted,
                     deal_reference.clone(),
-                )),
+                ))),
                 _ => None,
             }
         }
@@ -516,37 +451,39 @@ struct OpenPositionCache {
 }
 
 impl OpenPositionCache {
-    fn update(&mut self, update: OpenPositionUpdate) -> Option<Event> {
+    fn update(&mut self, update: OpenPositionUpdate) -> Option<(String, Event)> {
         let deal_reference: OrderReference = FromStr::from_str(update.deal_reference.as_str())
             .expect("Only supported deal references should be possible");
         self.positions.insert(deal_reference.clone(), update);
         self.get_current_event(deal_reference.borrow())
     }
 
-    fn get_current_event(&self, deal_reference: &OrderReference) -> Option<Event> {
+    fn get_current_event(&self, deal_reference: &OrderReference) -> Option<(String, Event)> {
         let position = self.positions.get(deal_reference);
         if let Some(position) = position {
             return match position {
                 OpenPositionUpdate {
+                    epic,
                     level,
                     status: OpuStatus::OPEN,
                     deal_status: DealStatus::ACCEPTED,
                     ..
-                } => Some(Event::Order(
+                } => Some((epic.clone(), Event::Order(
                     OrderEvent::PositionEntry {
                         entry_level: *level,
                     },
                     deal_reference.clone(),
-                )),
+                ))),
                 OpenPositionUpdate {
+                    epic,
                     level,
                     status: OpuStatus::DELETED,
                     deal_status: DealStatus::ACCEPTED,
                     ..
-                } => Some(Event::Order(
+                } => Some((epic.clone(), Event::Order(
                     OrderEvent::PositionExit { exit_level: *level },
                     deal_reference.clone(),
-                )),
+                ))),
                 _ => None,
             }
         }

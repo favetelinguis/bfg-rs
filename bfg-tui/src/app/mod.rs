@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use crate::app::actions::{Action, Actions};
 use crate::app::state::AppState;
 use crate::inputs::key::Key;
@@ -26,12 +27,32 @@ pub struct App {
     state: AppState,
     active_menu_item: MenuItem,
     // Updated from IG Stream
-    pub market: MarketView,
+    pub markets: MarketViewCache,
     pub account: AccountView,
     pub results: Vec<TradeResultView>,
     pub connection_information: ConnectionInformationView,
-    pub system: SystemView,
+    pub systems: SystemViewCache,
     // ---
+}
+
+#[derive(Debug, Default)]
+pub struct SystemViewCache {
+    systems: HashMap<String, SystemView>,
+}
+impl SystemViewCache {
+    pub fn update(&mut self, epic: String, view: SystemView) {
+        self.systems.insert(epic, view);
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct MarketViewCache {
+    markets: HashMap<String, MarketView>,
+}
+impl MarketViewCache {
+    pub fn update(&mut self, epic: String, view: MarketView) {
+        self.markets.insert(epic, view);
+    }
 }
 
 impl App {
@@ -47,12 +68,16 @@ impl App {
             is_loading,
             io_tx,
             active_menu_item,
-            market: Default::default(),
+            markets: Default::default(),
             account: Default::default(),
             connection_information: Default::default(),
-            system: Default::default(),
+            systems: Default::default(),
             results: Default::default(),
         }
+    }
+
+    pub fn add_trade_result(&mut self, view: TradeResultView) {
+        self.results.push(view);
     }
 
     pub async fn dispatch(&mut self, action: IoEvent) {

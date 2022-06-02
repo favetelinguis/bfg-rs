@@ -1,10 +1,11 @@
 use std::borrow::{Borrow, BorrowMut};
 use std::collections::HashMap;
-use crate::decider::order::{WorkingOrder, WorkingOrderFactory};
+use crate::decider::order::{RISK_REWARD_RATION, WorkingOrder, WorkingOrderFactory};
 use crate::decider::{Command, Event, MarketInfo};
 use crate::models::OhlcPrice;
 use crate::models::{Direction, OrderReference};
 use chrono::{Duration, NaiveDateTime, Utc};
+use log::{error, warn};
 
 #[derive(Debug)]
 pub struct SystemMachine<S> {
@@ -206,8 +207,16 @@ impl System {
             },
             // AwaitData -> DecideOrderPlacement []
             (System::AwaitData(val), Event::Data { prices, .. }) if !prices.is_empty() => {
-                let new_state = create_decide_order_placement_from_opening_range(val, prices);
-                (System::DecideOrderPlacement(new_state), vec![])
+                let opening_range = create_opening_range_from_ohlcs(prices);
+                if (opening_range.range_size() >= val.market_info.min_tradable_opening_range) || (opening_range.range_size() <= (val.market_info.min_tradable_opening_range * 10.)) { // TODO x10 is huge to much risk need to figure out what i can do here
+                    let mut new_state: SystemMachine<DecideOrderPlacement> = val.into();
+                    new_state.state.opening_range = opening_range;
+                    (System::DecideOrderPlacement(new_state), vec![])
+                } else {
+                    warn!("Trading range is to small or large for {}", val.market_info.epic);
+                    let mut new_state: SystemMachine<Error> = val.into();
+                    (System::Error(new_state), vec![])
+                }
             }
             // DecideOrderPlacement -> Setup []
             (
@@ -228,14 +237,16 @@ impl System {
                     ..
                 },
             ) if val.market_info.is_inside_trading_hours(update_time)
-                && is_price_over(val.market_info.stop_distance, &val.state.opening_range, *bid, *ask, &val.last_position_reference) =>
+                && is_price_over(val.market_info.stop_distance(val.state.opening_range.range_size()), &val.state.opening_range, *bid, *ask, &val.last_position_reference) =>
             {
+                let stop_distance = val.market_info.stop_distance(val.state.opening_range.range_size());
                 let command = Command::CreateWorkingOrder {
                     direction: Direction::BUY,
                     price: val.state.opening_range.high_ask,
                     reference: OrderReference::OVER_LONG,
                     market_info: val.market_info.clone(),
-                    target_price: None,
+                    stop_distance,
+                    target_distance: stop_distance * RISK_REWARD_RATION,
                 };
                 let market_info_clone = val.market_info.clone(); // TODO should save a reference to market_info not clone it
                 let opening_range_clone = val.state.opening_range.clone(); // TODO should save a reference to market_info not clone it
@@ -256,22 +267,25 @@ impl System {
                     ..
                 },
             ) if val.market_info.is_inside_trading_hours(update_time)
-                && is_price_between(val.market_info.stop_distance, &val.state.opening_range, *bid, *ask, &val.last_position_reference) =>
+                && is_price_between(val.market_info.stop_distance(val.state.opening_range.range_size()), &val.state.opening_range, *bid, *ask, &val.last_position_reference) =>
             {
+                let stop_distance = val.market_info.stop_distance(val.state.opening_range.range_size());
                 let commands = vec![
                     Command::CreateWorkingOrder {
                         direction: Direction::BUY,
                         price: val.state.opening_range.low_ask,
                         reference: OrderReference::BETWEEN_LONG,
                         market_info: val.market_info.clone(),
-                        target_price: Some(val.state.opening_range.high_bid),
+                        stop_distance,
+                        target_distance: stop_distance * RISK_REWARD_RATION,
                     },
                     Command::CreateWorkingOrder {
                         direction: Direction::SELL,
                         price: val.state.opening_range.high_bid,
                         reference: OrderReference::BETWEEN_SHORT,
                         market_info: val.market_info.clone(),
-                        target_price: Some(val.state.opening_range.low_ask),
+                        stop_distance,
+                        target_distance: stop_distance * RISK_REWARD_RATION,
                     },
                 ];
                 let market_info_clone1 = val.market_info.clone(); // TODO should save a reference to market_info not clone it
@@ -296,14 +310,16 @@ impl System {
                     ..
                 },
             ) if val.market_info.is_inside_trading_hours(update_time)
-                && is_price_under(val.market_info.stop_distance, &val.state.opening_range, *bid, *ask, &val.last_position_reference) =>
+                && is_price_under(val.market_info.stop_distance(val.state.opening_range.range_size()), &val.state.opening_range, *bid, *ask, &val.last_position_reference) =>
             {
+                let stop_distance = val.market_info.stop_distance(val.state.opening_range.range_size());
                 let command = Command::CreateWorkingOrder {
                     direction: Direction::SELL,
                     price: val.state.opening_range.low_bid,
                     reference: OrderReference::UNDER_SHORT,
                     market_info: val.market_info.clone(),
-                    target_price: None,
+                    stop_distance,
+                    target_distance: stop_distance * RISK_REWARD_RATION,
                 };
                 let market_info_clone = val.market_info.clone(); // TODO should save a reference to market_info not clone it
                 let opening_range_clone = val.state.opening_range.clone(); // TODO should save a reference to market_info not clone it
@@ -369,16 +385,6 @@ impl System {
     }
 }
 
-fn create_decide_order_placement_from_opening_range(
-    val: SystemMachine<AwaitData>,
-    prices: &Vec<OhlcPrice>,
-) -> SystemMachine<DecideOrderPlacement> {
-    let opening_range = create_opening_range_from_ohlcs(prices);
-    let mut new_state: SystemMachine<DecideOrderPlacement> = val.into();
-    new_state.state.opening_range = opening_range;
-    new_state
-}
-
 /// Get the data for the first open minute
 fn create_fetch_data_command(market_info: &MarketInfo) -> Command {
     let now = Utc::now();
@@ -390,7 +396,7 @@ fn create_fetch_data_command(market_info: &MarketInfo) -> Command {
     }
 }
 
-fn is_price_over(stop_distance: u8, opening_range: &OpeningRange, bid: f64, ask: f64, last_trade_reference: &Option<OrderReference>) -> bool {
+fn is_price_over(stop_distance: usize, opening_range: &OpeningRange, bid: f64, ask: f64, last_trade_reference: &Option<OrderReference>) -> bool {
     let level = (bid + ask) / 2.;
     let buffer: f64;
     if let Some(OrderReference::BETWEEN_SHORT | OrderReference::UNDER_SHORT) = last_trade_reference {
@@ -404,7 +410,7 @@ fn is_price_over(stop_distance: u8, opening_range: &OpeningRange, bid: f64, ask:
 
 /// Opening range must be 3.4x stop distance
 /// If we try to change direction we have a buffer of 3x stop distance so that leave some distance when we force a 3.4x opening range to always have room to trigger.
-fn is_price_between(stop_distance: u8, opening_range: &OpeningRange, bid: f64, ask: f64, last_trade_reference: &Option<OrderReference>) -> bool {
+fn is_price_between(stop_distance: usize, opening_range: &OpeningRange, bid: f64, ask: f64, last_trade_reference: &Option<OrderReference>) -> bool {
     let level = (bid + ask) / 2.;
     let mut long_buffer = stop_distance as f64;
     let mut short_buffer = stop_distance as f64;
@@ -422,7 +428,7 @@ fn is_price_between(stop_distance: u8, opening_range: &OpeningRange, bid: f64, a
     is_or_large_enough && is_price_between
 }
 
-fn is_price_under(stop_distance: u8, opening_range: &OpeningRange, bid: f64, ask: f64, last_trade_reference: &Option<OrderReference>) -> bool {
+fn is_price_under(stop_distance: usize, opening_range: &OpeningRange, bid: f64, ask: f64, last_trade_reference: &Option<OrderReference>) -> bool {
     let level = (bid + ask) / 2.;
     let buffer;
     if let Some(OrderReference::BETWEEN_LONG | OrderReference::OVER_LONG) = last_trade_reference {

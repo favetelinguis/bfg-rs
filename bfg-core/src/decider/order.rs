@@ -4,6 +4,9 @@ use std::borrow::Borrow;
 use std::fmt::{Display, Formatter};
 use crate::decider::system::OpeningRange;
 
+pub const STRATEGY_VERSION: usize = 1;
+pub const RISK_REWARD_RATION: usize = 2;
+
 #[derive(Debug)]
 pub struct WorkingOrderMachine<S> {
     state: S,
@@ -313,11 +316,13 @@ impl WorkingOrder {
                     OrderReference::BETWEEN_SHORT,
                 ),
             ) => {
+                let epic = val.market_info.epic.clone();
                 let mut new_state: WorkingOrderMachine<PositionOpened> = val.into();
                 new_state.state.actual_entry_level = *entry_level;
                 (
                     WorkingOrder::PositionOpened(new_state),
                     vec![Command::CancelWorkingOrder {
+                        epic,
                         reference_to_cancel: OrderReference::BETWEEN_LONG,
                     }],
                 )
@@ -330,11 +335,13 @@ impl WorkingOrder {
                     OrderReference::BETWEEN_LONG,
                 ),
             ) => {
+                let epic = val.market_info.epic.clone();
                 let mut new_state: WorkingOrderMachine<PositionOpened> = val.into();
                 new_state.state.actual_entry_level = *entry_level;
                 (
                     WorkingOrder::PositionOpened(new_state),
                     vec![Command::CancelWorkingOrder {
+                        epic,
                         reference_to_cancel: OrderReference::BETWEEN_SHORT,
                     }],
                 )
@@ -358,7 +365,7 @@ impl WorkingOrder {
                     val.state.actual_entry_level,
                 ) =>
             {
-                let stop_distance= val.market_info.stop_distance;
+                let stop_distance= val.market_info.stop_distance(val.opening_range.range_size());
                 let direction_multiple;
                 if let OrderReference::OVER_LONG | OrderReference::BETWEEN_LONG =
                 val.state.reference.clone()
@@ -367,23 +374,12 @@ impl WorkingOrder {
                 } else {
                     direction_multiple = 1.;
                 }
-                // We need to keep the fixed target when adding trailing stop if this is a between order
-                let mut target = None;
-                if let OrderReference::BETWEEN_SHORT =
-                val.state.reference.clone()
-                {
-                    target = Some(val.opening_range.low_ask);
-                };
-                if let OrderReference::BETWEEN_LONG =
-                val.state.reference.clone()
-                {
-                    target = Some(val.opening_range.high_bid);
-                };
                 let command = Command::UpdatePosition {
+                    epic: val.market_info.epic.clone(),
                     level: val.state.actual_entry_level + (stop_distance as f64 * direction_multiple),
                     deal_id: val.state.deal_id.clone(),
                     trailing_stop_distance: stop_distance,
-                    target_level: target,
+                    target_distance: stop_distance * RISK_REWARD_RATION,
                 };
                 (
                     WorkingOrder::AwaitingTrailingStopConfirmation(val.into()),
@@ -412,6 +408,7 @@ impl WorkingOrder {
                 Event::Order(OrderEvent::PositionExit { exit_level }, _),
             ) => {
                 let epic = val.market_info.epic.clone();
+                let range_size = val.opening_range.range_size();
                 let mut new_state: WorkingOrderMachine<PositionExited> = val.into();
                 new_state.state.exit_level = exit_level.clone();
 
@@ -422,6 +419,8 @@ impl WorkingOrder {
                     exit_time: new_state.state.exit_time.clone(),
                     exit_level: new_state.state.exit_level,
                     reference: new_state.state.reference.clone(),
+                    opening_range_size: range_size,
+                    strategy_version: STRATEGY_VERSION,
                     epic,
                 });
                 (WorkingOrder::PositionExited(new_state), vec![command])
@@ -432,6 +431,7 @@ impl WorkingOrder {
                 Event::Order(OrderEvent::PositionExit { exit_level }, _),
             ) => {
                 let epic = val.market_info.epic.clone();
+                let range_size = val.opening_range.range_size();
                 let mut new_state: WorkingOrderMachine<PositionExited> = val.into();
                 new_state.state.exit_level = exit_level.clone();
                 let command = Command::PublishTradeResults(TradeResult {
@@ -441,16 +441,19 @@ impl WorkingOrder {
                     exit_time: new_state.state.exit_time.clone(),
                     exit_level: new_state.state.exit_level,
                     reference: new_state.state.reference.clone(),
+                    opening_range_size: range_size,
+                    strategy_version: STRATEGY_VERSION,
                     epic,
                 });
                 (WorkingOrder::PositionExited(new_state), vec![command])
             }
-            // Position is cloded before updating with trailing stop
+            // Position is closed before updating with trailing stop
             (
                 WorkingOrder::PositionOpened(val),
                 Event::Order(OrderEvent::PositionExit { exit_level }, _),
             ) => {
                 let epic = val.market_info.epic.clone();
+                let range_size = val.opening_range.range_size();
                 let mut new_state: WorkingOrderMachine<PositionExited> = val.into();
                 new_state.state.exit_level = exit_level.clone();
                 let command = Command::PublishTradeResults(TradeResult {
@@ -460,6 +463,8 @@ impl WorkingOrder {
                     exit_time: new_state.state.exit_time.clone(),
                     exit_level: new_state.state.exit_level,
                     reference: new_state.state.reference.clone(),
+                    opening_range_size: range_size,
+                    strategy_version: STRATEGY_VERSION,
                     epic,
                 });
                 (WorkingOrder::PositionExited(new_state), vec![command])

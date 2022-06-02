@@ -1,6 +1,8 @@
 use crate::app::state::AppState;
 use crate::App;
 use std::borrow::Borrow;
+use std::collections::HashMap;
+use std::path::Iter;
 use tui::backend::Backend;
 use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use tui::style::{Color, Style};
@@ -29,9 +31,9 @@ where
         .constraints([Constraint::Percentage(75), Constraint::Percentage(25)].as_ref())
         .split(body_chunks[1]);
 
-    let market= draw_market_view(app.market.borrow());
+    let market= draw_market_view(&app.markets.markets);
     let results = draw_results_view(app.results.borrow());
-    let system = draw_system_view(app.system.borrow());
+    let system = draw_system_view(&app.systems.systems);
     let account = draw_account_view(app.account.borrow());
     rect.render_widget(market, market_results_chunks[0]);
     rect.render_widget(results, market_results_chunks[1]);
@@ -39,7 +41,7 @@ where
     rect.render_widget(account, system_account_chunks[1]);
 }
 
-pub fn draw_market_view<'a>(view: &MarketView) -> Table<'a> {
+pub fn draw_market_view<'a>(views: &HashMap<String, MarketView>) -> Table<'a> {
     let header_style = Style::default().fg(Color::LightCyan);
     let row_style = Style::default().fg(Color::Gray);
 
@@ -55,7 +57,7 @@ pub fn draw_market_view<'a>(view: &MarketView) -> Table<'a> {
     ]);
     rows.push(headers); // TODO is this how headers are set?
 
-    for _ in 1..2 { // Fake now but shows when we have multiple markets
+    for (epic, view) in views { // Fake now but shows when we have multiple markets
         let bid = view.bid.unwrap_or_default();
         let ask = view.ask.unwrap_or_default();
         let spread = ask - bid;
@@ -173,7 +175,7 @@ pub fn draw_account_view<'a>(state: &AccountView) -> Paragraph<'a> {
     )
 }
 
-pub fn draw_system_view<'a>(view: &SystemView) -> Table<'a> {
+pub fn draw_system_view<'a>(views: &HashMap<String,SystemView>) -> Table<'a> {
     let header_style = Style::default().fg(Color::LightCyan);
     let row_style = Style::default().fg(Color::Gray);
 
@@ -190,7 +192,7 @@ pub fn draw_system_view<'a>(view: &SystemView) -> Table<'a> {
     ]);
     rows.push(headers); // TODO is this how headers are set?
 
-    for _ in 1..2 { // Fake now but shows when we have multiple system
+    for (epic, view) in views { // Fake now but shows when we have multiple system
         let mut long = "".to_string();
         let mut short = "".to_string();
         for order in view.orders.iter() {

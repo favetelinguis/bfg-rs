@@ -159,7 +159,8 @@ impl IgRestClient<HasSession> {
         level: f64,
         deal_reference: &str,
         market_info: MarketInfo,
-        target_price: Option<f64>,
+        target_distance: usize,
+        stop_distance: usize,
     ) -> Result<(), BrokerageError> {
         let SessionState { xst, cst, .. } = &*self.session.lock().await;
         let mut headers = HeaderMap::new();
@@ -176,7 +177,7 @@ impl IgRestClient<HasSession> {
         headers.insert("CST", cst.parse().unwrap());
         headers.insert("Version", "2".parse().unwrap());
         let request_body =
-            CreateWorkingOrderRequest::new(direction.clone().into(), level, deal_reference, market_info, target_price);
+            CreateWorkingOrderRequest::new(direction.clone().into(), level, deal_reference, market_info, target_distance, stop_distance);
         let res = self
             .client
             .post(format!(
@@ -253,8 +254,8 @@ impl IgRestClient<HasSession> {
         &self,
         deal_id: &str,
         stop_level: f64,
-        trailing_stop_distance: u8,
-        target_level: Option<f64>,
+        trailing_stop_distance: usize,
+        target_distance: usize,
     ) -> Result<(), BrokerageError> {
         let SessionState {
             ref xst, ref cst, ..
@@ -279,7 +280,7 @@ impl IgRestClient<HasSession> {
                 self.connection_details.base_url, "positions/otc", deal_id
             ))
             .headers(headers)
-            .json(EditPositionRequest::new(stop_level, trailing_stop_distance, target_level).borrow())
+            .json(EditPositionRequest::new(stop_level, trailing_stop_distance, target_distance).borrow())
             .send()
             .await
             .map_err(|e| BrokerageError(e.to_string()))?;

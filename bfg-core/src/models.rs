@@ -149,6 +149,26 @@ pub enum OrderReference {
     UNDER_SHORT,
 }
 
+pub fn get_reference_id(val: &str) -> usize {
+    match val {
+        "OVER_LONG" => 1,
+        "BETWEEN_LONG" => 2,
+        "BETWEEN_SHORT" => 3,
+        "UNDER_SHORT" => 4,
+        _ => unreachable!(),
+    }
+}
+
+pub fn get_reference_from_id(val: u32) -> String {
+    match val {
+        1 => "OVER_LONG".to_string(),
+        2 => "BETWEEN_LONG".to_string(),
+        3 => "BETWEEN_SHORT".to_string(),
+        4 => "UNDER_SHORT".to_string(),
+        _ => unreachable!(),
+    }
+}
+
 #[derive(Debug)]
 pub struct MarketOrderDetails {
     pub direction: Direction,
