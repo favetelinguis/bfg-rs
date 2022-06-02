@@ -1,6 +1,7 @@
 use bfg_core::decider::{Command, Event, OrderEvent, TradeResult, MarketInfo};
+use chrono_tz::Europe::{London, Stockholm};
 use bfg_core::models::{OhlcPrice, OrderReference, Price};
-use chrono::NaiveTime;
+use chrono::{DateTime, NaiveDateTime, NaiveTime, Timelike, Utc};
 use ig_brokerage_adapter::realtime::models::{AccountUpdate, DealStatus, MarketState, MarketUpdate, OpenPositionUpdate, OpuStatus, PositionStatus, TradeConfirmationUpdate};
 use ig_brokerage_adapter::rest::models::FetchDataResponse;
 use ig_brokerage_adapter::{ConnectionDetails, IgBrokerageApi, RealtimeEvent};
@@ -304,7 +305,7 @@ pub struct MarketCache {
     pub ask: Option<f64>,
     pub market_delay: Option<usize>,
     pub market_state: Option<MarketState>,
-    pub update_time: Option<NaiveTime>,
+    pub update_time: Option<DateTime<Utc>>,
 }
 
 impl MarketCache {
@@ -315,7 +316,7 @@ impl MarketCache {
             ask: self.ask,
             market_delay: self.market_delay,
             market_state: self.market_state.clone().map(|s| format!("{:?}", s)),
-            update_time: self.update_time.map(|t| t.to_string())
+            update_time: self.update_time.map(|t| t.time().format("%H:%M:%S").to_string())
         })
     }
     /// Only update fields that has new values
@@ -323,8 +324,7 @@ impl MarketCache {
     fn update(&mut self, update: MarketUpdate) -> Option<(String, Event)> {
         self.epic = update.epic;
         if update.update_time.is_some() {
-            self.update_time =
-                Some(NaiveTime::from_str(update.update_time.unwrap().as_str()).unwrap());
+            self.update_time = get_utc_time_for_update(&update.update_time.unwrap());
         }
         if update.market_state.is_some() {
             self.market_state = update.market_state.clone();
@@ -373,6 +373,19 @@ impl MarketCache {
     }
 }
 
+/// Stream update times are in GMT or BST depending on daylight savings
+/// We want them to be converted to Utc
+fn get_utc_time_for_update(update_time: &String) -> Option<DateTime<Utc>> {
+    let update_time = NaiveTime::from_str(update_time).unwrap();
+    // Here update_time is with London timezone
+    let updae_time = Utc::now().with_timezone(&London)
+        .with_hour(update_time.hour()).unwrap()
+        .with_minute(update_time.minute()).unwrap()
+        .with_second(update_time.second()).unwrap()
+        .with_timezone(&Utc);
+    Some(updae_time)
+}
+
 #[derive(Default, Debug, Clone)]
 struct TradeConfirmationCache {
     confirms: HashMap<OrderReference, TradeConfirmationUpdate>,
@@ -382,7 +395,6 @@ impl TradeConfirmationCache {
     fn update(&mut self, update: TradeConfirmationUpdate) -> Option<(String, Event)> {
         let deal_reference: Option<OrderReference> = FromStr::from_str(update.deal_reference.as_str()).ok();
         // Only cara about updates for known OrderReferences, since i get an old snapshot if i have done orders in gui or api i can get a snapshot with
-        // TODO would like to filter out the snapshots for TradeConfigmations
         if let Some(reference) = deal_reference {
             self.confirms.insert(reference.clone(), update);
             self.get_current_event(reference.borrow())
@@ -492,6 +504,19 @@ impl OpenPositionCache {
 }
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+    use chrono::{NaiveTime, Timelike, Utc};
+    use chrono_tz::Europe::London;
+
     #[test]
-    fn it_works_factory() {}
+    fn it_works_factory() {
+        let update_time = NaiveTime::from_str("12:0:0").unwrap();
+        // Here update_time is with London timezone
+        let updae_time = Utc::now().with_timezone(&London)
+            .with_hour(update_time.hour()).unwrap()
+            .with_minute(update_time.minute()).unwrap()
+            .with_second(update_time.second()).unwrap()
+            .with_timezone(&Utc);
+        println!("{}", updae_time.to_string())
+    }
 }

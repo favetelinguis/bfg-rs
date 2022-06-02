@@ -1,6 +1,6 @@
 use std::env::home_dir;
 use std::str::FromStr;
-use chrono::{NaiveDate, NaiveTime};
+use chrono::{DateTime, NaiveDate, NaiveTime, Timelike, TimeZone, Utc};
 use bfg_ig::models::{ConnectionDetails, MarketInfo};
 use serde::{Deserialize, Serialize};
 use tokio::fs;
@@ -17,10 +17,8 @@ pub struct InternalMarketInfo {
     pub currency: String,
     pub min_tradable_opening_range: f64,
     pub lot_size: u8,
-    pub open_time: String,
-    pub close_time: String,
-    pub start_fetch_data: String,
-    pub utc_close_working_order: String,
+    pub utc_open_time: String,
+    pub utc_close_time: String,
     pub non_trading_days: Vec<String>,
     pub bars_in_opening_range: u8,
 }
@@ -32,6 +30,8 @@ pub struct BfgConfig {
 }
 
 impl BfgConfig {
+    /// Create configuration objects for the markets that has trading hours today.
+    /// non_trading_days will be used to filter out configurations.
     pub async fn new() -> Self {
         let mut path = home_dir().expect("always have a home");
         path.push("bfg/demo/config.json");
@@ -40,35 +40,52 @@ impl BfgConfig {
             .expect("JSON is not the correct format");
         Self {
             connection_details: json.connection_details,
-            epics: json.epics.iter().cloned().map(|v| v.into()).collect(),
+            epics: json.epics.iter().cloned().filter_map(|v| v.try_into().ok()).collect(),
         }
     }
 }
 
-impl From<InternalMarketInfo> for MarketInfo {
-    fn from(val: InternalMarketInfo) -> Self {
-        MarketInfo {
-            epic: val.epic,
-            expiry: val.expiry,
-            currency: val.currency,
-            min_tradable_opening_range: val.min_tradable_opening_range,
-            lot_size: val.lot_size,
-            open_time: NaiveTime::from_str(val.open_time.as_str()).expect("Failed to parse open_time"),
-            close_time: NaiveTime::from_str(val.close_time.as_str()).expect("Failed to parse close_time"),
-            start_fetch_data: NaiveTime::from_str(val.start_fetch_data.as_str()).expect("Failed to parse start_fetch_data"),
-            utc_close_working_order: NaiveTime::from_str(val.utc_close_working_order.as_str()).expect("Failed to parse utc_close_working_order"),
-            non_trading_days: val.non_trading_days.iter().map(|i| NaiveDate::from_str(i).expect("Failed to parse non_trading_days")).collect(),
-            bars_in_opening_range: val.bars_in_opening_range,
+impl TryFrom<InternalMarketInfo> for MarketInfo {
+    type Error = ();
+
+    fn try_from(value: InternalMarketInfo) -> Result<Self, Self::Error> {
+        let today = Utc::today();
+        let is_non_trading_day = value.non_trading_days.iter()
+            .map(|i| NaiveDate::from_str(i).expect("Failed to parse non_trading_days"))
+            .map(|d| Utc::from_utc_date(&Utc, &d))
+            .any(|non_trading_day| non_trading_day.eq(&today));
+        if is_non_trading_day {
+            Err(())
+        } else {
+            Ok(
+                MarketInfo {
+                    epic: value.epic,
+                    expiry: value.expiry,
+                    currency: value.currency,
+                    min_tradable_opening_range: value.min_tradable_opening_range,
+                    lot_size: value.lot_size,
+                    utc_open_time: create_utc_from_time(&value.utc_open_time),
+                    utc_close_time: create_utc_from_time(&value.utc_close_time),
+                    bars_in_opening_range: value.bars_in_opening_range,
+                }
+            )
         }
     }
+}
+
+fn create_utc_from_time(time: &str) -> DateTime<Utc> {
+    let naive_time = NaiveTime::from_str(time).expect("Failed to parse time");
+    Utc::now().with_hour(naive_time.hour()).unwrap().with_minute(naive_time.minute()).unwrap().with_second(naive_time.second()).unwrap()
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::BfgConfig;
+    use std::str::FromStr;
+    use chrono::{DateTime, NaiveDate, NaiveTime, Timelike, Utc};
 
-    #[tokio::test]
-    async fn read() {
-        let conf = BfgConfig::new().await;
+    #[test]
+    fn read() {
+        let date = NaiveDate::from_str("2022-6-2").unwrap();
+        println!("{}", date.to_string());
     }
 }

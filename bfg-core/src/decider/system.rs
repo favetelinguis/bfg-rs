@@ -387,11 +387,9 @@ impl System {
 
 /// Get the data for the first open minute
 fn create_fetch_data_command(market_info: &MarketInfo) -> Command {
-    let now = Utc::now();
-    let dt_start = NaiveDateTime::new(now.naive_utc().date(), market_info.start_fetch_data);
     Command::FetchData {
         epic: market_info.epic.clone(),
-        start: dt_start,
+        start: market_info.utc_open_time,
         duration: Duration::minutes(market_info.bars_in_opening_range as i64),
     }
 }

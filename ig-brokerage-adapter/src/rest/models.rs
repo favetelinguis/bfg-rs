@@ -1,10 +1,12 @@
+use std::ops::Sub;
 use std::str::FromStr;
 use crate::realtime::models::Direction;
-use chrono::{NaiveDateTime, NaiveTime, Utc};
+use chrono::{Duration, NaiveDateTime, NaiveTime, Utc};
 use log::info;
 use serde::{Deserialize, Serialize};
 use bfg_core::decider::MarketInfo;
 use bfg_core::models::{get_reference_id, OrderReference};
+use chrono_tz::Europe::{London, Stockholm};
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ApiResponse(pub String);
@@ -285,16 +287,14 @@ impl Default for CreateWorkingOrderRequest {
 }
 
 /// Tricky here is that we need to apend the expic and encode the reference as usize since we need to keep the
-/// reference unique between markets and orders
+/// reference unique between markets and orders.
+/// Also good till data will close our 15 mins before market close
 impl CreateWorkingOrderRequest {
     pub fn new(direction: Direction, level: f64, reference: &str, market_info: MarketInfo, target_distance: usize, stop_distance: usize) -> Self {
         let ref_id = get_reference_id(reference).to_string();
         let deal_reference = format!("{}{}", ref_id, market_info.epic).replace(".", ""); // needed to have unique references
-        let now = Utc::now();
-        let close_today = NaiveDateTime::new(now.naive_utc().date(), market_info.utc_close_working_order);
-        let close_today_format = close_today.format("%Y/%m/%d %H:%M:%S").to_string();
         Self {
-            good_till_date: close_today_format,
+            good_till_date: market_info.utc_close_time.sub(Duration::minutes(15)).format("%Y/%m/%d %H:%M:%S").to_string(),
             direction,
             level,
             deal_reference,

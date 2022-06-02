@@ -1,6 +1,6 @@
 use crate::decider::system::{System, SystemFactory};
 use crate::models::{Direction, OhlcPrice, OrderReference};
-use chrono::{DateTime, Duration, NaiveDate, NaiveDateTime, NaiveTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use std::ops::{Add, Sub};
 
 pub mod order;
@@ -19,7 +19,7 @@ pub enum Event {
     Order(OrderEvent, OrderReference),
     Market {
         epic: String,
-        update_time: NaiveTime,
+        update_time: DateTime<Utc>,
         bid: f64,
         ask: f64,
     },
@@ -34,7 +34,7 @@ pub enum Event {
 #[derive(Debug)]
 pub enum Command {
     FetchData {
-        start: NaiveDateTime,
+        start: DateTime<Utc>,
         duration: Duration,
         epic: String,
     },
@@ -82,11 +82,8 @@ pub struct MarketInfo {
     pub expiry: String,
     pub currency: String,
     pub lot_size: u8,
-    pub open_time: NaiveTime,
-    pub close_time: NaiveTime,
-    pub start_fetch_data: NaiveTime,
-    pub utc_close_working_order: NaiveTime,
-    pub non_trading_days: Vec<NaiveDate>,
+    pub utc_open_time: DateTime<Utc>,
+    pub utc_close_time: DateTime<Utc>,
 }
 
 impl Default for MarketInfo {
@@ -98,19 +95,16 @@ impl Default for MarketInfo {
             expiry: "".to_string(),
             currency: "".to_string(),
             lot_size: 0,
-            open_time: Utc::now().time().sub(Duration::minutes(10)),
-            close_time: Utc::now().time().add(Duration::hours(5)),
-            start_fetch_data: Utc::now().time().add(Duration::hours(5)),
-            utc_close_working_order: Utc::now().time().add(Duration::hours(5)),
-            non_trading_days: vec![],
+            utc_open_time: Utc::now().sub(Duration::minutes(10)),
+            utc_close_time: Utc::now().add(Duration::hours(5)),
         }
     }
 }
 
 impl MarketInfo {
-    pub fn is_inside_trading_hours(&self, now: &NaiveTime) -> bool {
-        *now > self.open_time.add(Duration::minutes(1))
-            && *now < self.close_time.sub(Duration::minutes(15))
+    pub fn is_inside_trading_hours(&self, now: &DateTime<Utc>) -> bool {
+        *now > self.utc_open_time.add(Duration::minutes(1))
+            && *now < self.utc_close_time.sub(Duration::minutes(15))
     }
     pub fn stop_distance(&self, opening_range_size: f64) -> usize {
         ((opening_range_size - 1.) / 3.).floor() as usize

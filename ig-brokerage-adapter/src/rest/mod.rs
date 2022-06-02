@@ -4,6 +4,7 @@ use crate::rest::models::{
     CreateWorkingOrderRequest, EditPositionRequest, FetchDataResponse, OpenPositionRequest,
     RefreshTokenRequest,
 };
+use chrono_tz::Europe::{London, Stockholm};
 use crate::{BrokerageError, ConnectionDetails, SessionState};
 use bfg_core::models::Direction;
 use reqwest::header::{HeaderMap, ACCEPT, CONTENT_TYPE};
@@ -12,7 +13,7 @@ use std::borrow::Borrow;
 use std::marker::PhantomData;
 use std::ops::{Add, Sub};
 use std::sync::Arc;
-use chrono::{Duration, NaiveDateTime};
+use chrono::{DateTime, Duration, NaiveDateTime, Utc};
 use log::warn;
 use tokio::sync::Mutex;
 use bfg_core::decider::MarketInfo;
@@ -102,12 +103,14 @@ impl IgRestClient<NoSession> {
 }
 
 impl IgRestClient<HasSession> {
+    /// fetch data api expects local time for account wich in my case is stockholm
     pub async fn fetch_data(
         &self,
         epic: &str,
-        start: NaiveDateTime,
+        start: DateTime<Utc>,
         duration: Duration,
     ) -> Result<FetchDataResponse, BrokerageError> {
+        let start = start.with_timezone(&Stockholm);
         let dt_start_format = start.format("%Y-%m-%dT%H:%M:%S").to_string();
         // We always substract 1minute since we send number bars wich will always be minimum 1
         // but in reality will give us 2 bars when start 9:00 and end 9:01

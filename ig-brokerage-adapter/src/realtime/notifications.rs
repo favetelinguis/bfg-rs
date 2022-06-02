@@ -1,7 +1,9 @@
 use crate::realtime::models::{AccountUpdate, MarketState, OpenPositionUpdate, TradeConfirmationUpdate, WorkingOrderUpdate};
 use std::borrow::BorrowMut;
+use std::ops::{Add, Sub};
 use std::str::FromStr;
-use log::warn;
+use chrono::{DateTime, Duration, Utc};
+use log::{info, warn};
 use bfg_core::models::get_reference_from_id;
 use crate::MarketUpdate;
 
@@ -42,10 +44,15 @@ pub fn parse_trade_update(
 
     let conf = if parts[0].starts_with('{') {
         if let Some(mut confirmation) = serde_json::from_str::<TradeConfirmationUpdate>(parts[0]).ok() {
-            let ref_id = confirmation.deal_reference.chars().next().unwrap();
-            if let Some(ref_id) = ref_id.to_digit(10) { // if i palce some order in rest companion it will not have correct reference and i will get it at start as the anoying bug that i need to skip the initial update message
-                confirmation.deal_reference = get_reference_from_id(ref_id);
-                Some(confirmation)
+            if !is_old_message(confirmation.date.clone()) {
+                let ref_id = confirmation.deal_reference.chars().next().unwrap();
+                if let Some(ref_id) = ref_id.to_digit(10) {
+                    confirmation.deal_reference = get_reference_from_id(ref_id);
+                    info!("Included CONFS: {}", parts[0]);
+                    Some(confirmation)
+                } else {
+                    warn!("Skipping CONFS due to old message: {}", parts[0]);
+                    None }
             } else { None }
         } else { None }
     } else {
@@ -75,6 +82,14 @@ pub fn parse_trade_update(
     };
 
     (conf, opu, wou)
+}
+
+/// Check if now minus 10 seconds is before conf time
+fn is_old_message(conf_time: String) -> bool {
+    // Remove milliseconds
+    let conf_time = &String::from("2022-06-02T18:47:43.065")[..19];
+    let conf_time: DateTime<Utc> = DateTime::parse_from_rfc3339(format!("{}Z", conf_time).as_str()).unwrap().with_timezone(&Utc);
+    conf_time.add(Duration::seconds(10)) < Utc::now()
 }
 
 pub fn parse_account_update(msg: &str, account: String) -> AccountUpdate {
@@ -186,8 +201,11 @@ pub fn parse_market_update(msg: &str, epic: String) -> MarketUpdate {
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+    use chrono::{DateTime, Utc};
+    use serde_json::from_str;
     use crate::realtime::models::{OpenPositionUpdate, TradeConfirmationUpdate};
-    use crate::realtime::notifications::parse_trade_update;
+    use crate::realtime::notifications::{is_old_message, parse_trade_update};
 
     #[test]
     fn initial_market() {
@@ -266,7 +284,11 @@ mod tests {
 
     #[test]
     fn bla() {
-        let a = serde_json::from_str::<TradeConfirmationUpdate>("{\"direction\":\"BUY\",\"epic\":\"IX.D.DAX.IFMM.IP\",\"stopLevel\":14192.3,\"limitLevel\":14202.3,\"dealReference\":\"APPPA\",\"dealId\":\"DIAAAAJEBA9SKAW\",\"limitDistance\":null,\"stopDistance\":null,\"expiry\":\"-\",\"affectedDeals\":[{\"dealId\":\"DIAAAAJEBA9SKAW\",\"status\":\"OPENED\"}],\"dealStatus\":\"ACCEPTED\",\"guaranteedStop\":false,\"trailingStop\":false,\"level\":14197.3,\"reason\":\"SUCCESS\",\"status\":\"OPEN\",\"size\":1,\"profit\":null,\"profitCurrency\":null,\"date\":\"2022-05-17T13:43:18.425\",\"channel\":\"PublicRestOTC\"}").unwrap();
-        let b = 3;
+        let stra = &String::from("2022-06-02T18:47:43.065")[..19];
+        println!("RAW {}", stra);
+        let utc: DateTime<Utc> = DateTime::parse_from_rfc3339(format!("{}Z", stra).as_str()).unwrap().with_timezone(&Utc);
+        println!("{}", utc.to_string());
+        let old = is_old_message("2022-06-02T19:39:41.987".to_string());
+        println!("This is an old message {}", old)
     }
 }
