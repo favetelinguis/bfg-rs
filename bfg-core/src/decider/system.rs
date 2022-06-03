@@ -342,7 +342,16 @@ impl System {
             ) if !val.market_info.is_inside_trading_hours(update_time) => {
                 (System::Setup(val.into()), vec![])
             }
-            // ManageOrders -> PositionExit []
+            // ManageOrders -> DecideOrderPlacement [] - WOCancel
+            (
+                System::ManageOrders(mut val),
+                Event::WOCancel(reference)
+            ) => {
+                let mut new_system: SystemMachine<DecideOrderPlacement> = val.into();
+                new_system.last_position_reference = Some(reference.clone());
+                (System::DecideOrderPlacement(new_system), vec![])
+            }
+            // ManageOrders -> DecideOrderPlacement []
             (System::ManageOrders(val), Event::PositionExit(reference)) => {
                 let mut new_system: SystemMachine<DecideOrderPlacement> = val.into();
                 new_system.last_position_reference = Some(reference.clone());

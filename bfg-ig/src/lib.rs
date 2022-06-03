@@ -214,7 +214,7 @@ pub fn spawn_bfg(connection_details: ConnectionDetails, market_infos: Vec<Market
                                     vec![]
                                 }
                             }
-                            Command::UpdatePosition {epic, deal_id, level, trailing_stop_distance, target_distance} => {
+                            Command::UpdatePosition {epic, deal_id, level, trailing_stop_distance, target_distance, reference} => {
                                 info!("Executing: UpdatePosition for {}", epic);
                                 if let Err(BrokerageError(error)) = brokerage
                                     .rest
@@ -224,7 +224,8 @@ pub fn spawn_bfg(connection_details: ConnectionDetails, market_infos: Vec<Market
                                     vec![(epic, Event::Error(error
                                     ))]
                                 } else {
-                                    vec![]
+                                    // TODO rough to retry everything, probably only want this for som errors
+                                    vec![(epic, Event::Order(OrderEvent::RejectedAtRestApi, reference))]
                                 }
                             }
                             /// Use the provided reference and the order cache to find order id to cancel
@@ -262,8 +263,11 @@ pub fn spawn_bfg(connection_details: ConnectionDetails, market_infos: Vec<Market
                                         epic: tr.epic.clone(),
                                     };
                                 ig_tx.send(IgEvent::TradesResultsView(view)).await.expect("Failed sending message");
-                                vec![(epic, Event::PositionExit(tr.reference.clone()))]
+                                vec![(epic.clone(), Event::PositionExit(tr.reference.clone()))]
                             }
+                            Command::Restart(reference) => {
+                                vec![(epic.clone(), Event::WOCancel(reference))]
+                            },
                             Command::FatalFailure(reason) => {
                                 info!("Executing: FatalFailure for {} with reason {}",epic, reason);
                                 vec![]

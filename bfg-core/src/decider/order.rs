@@ -294,8 +294,22 @@ impl WorkingOrder {
             // AwaitingWOOpenConfirmation -> WOOpenRejected []
             (
                 WorkingOrder::AwaitingWOOpenConfirmation(val),
-                Event::Order(OrderEvent::ConfirmationRejection, _),
-            ) => (WorkingOrder::WOOpenRejected(val.into()), vec![]),
+                Event::Order(OrderEvent::ConfirmationRejection, reference),
+            ) => {
+                // If any WOOpen is rejected we want to fail
+                let mut commands: Vec<Command> = vec![Command::Restart(reference.clone())];
+                if let OrderReference::BETWEEN_LONG | OrderReference::BETWEEN_SHORT = reference {
+                    commands = vec![Command::CancelWorkingOrder {
+                        epic: val.market_info.epic.clone(), reference_to_cancel: OrderReference::BETWEEN_SHORT
+                    }, Command::Restart(reference.clone())];
+                }
+                if let OrderReference::BETWEEN_SHORT = reference {
+                    commands = vec![Command::CancelWorkingOrder {
+                        epic: val.market_info.epic.clone(), reference_to_cancel: OrderReference::BETWEEN_LONG
+                    }, Command::Restart(reference.clone())];
+                }
+                (WorkingOrder::WOOpenRejected(val.into()), commands)
+            },
             // WOOpenAccepted -> PositionOpened []
             (
                 WorkingOrder::WOOpenAccepted(val),
@@ -380,6 +394,7 @@ impl WorkingOrder {
                     deal_id: val.state.deal_id.clone(),
                     trailing_stop_distance: stop_distance,
                     target_distance: stop_distance * RISK_REWARD_RATION,
+                    reference: val.state.reference.clone(),
                 };
                 (
                     WorkingOrder::AwaitingTrailingStopConfirmation(val.into()),
@@ -397,12 +412,20 @@ impl WorkingOrder {
             // AwaitingTrailingStopConfirmation -> PositionOpened (retry trailing stop)
             (
                 WorkingOrder::AwaitingTrailingStopConfirmation(val),
+                Event::Order(OrderEvent::RejectedAtRestApi, _),
+            ) => (
+                WorkingOrder::PositionOpened(val.into()),
+                vec![],
+            ),
+            // AwaitingTrailingStopConfirmation -> PositionOpened (retry trailing stop)
+            (
+                WorkingOrder::AwaitingTrailingStopConfirmation(val),
                 Event::Order(OrderEvent::ConfirmationRejection, _),
             ) => (
                 WorkingOrder::PositionOpened(val.into()),
                 vec![],
             ),
-            // If position is closed while waiting to order to update
+            // If position is closed while waiting for order to update
             (
                 WorkingOrder::AwaitingTrailingStopConfirmation(val),
                 Event::Order(OrderEvent::PositionExit { exit_level }, _),

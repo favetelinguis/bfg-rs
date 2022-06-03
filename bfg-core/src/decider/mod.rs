@@ -14,10 +14,12 @@ pub enum OrderEvent {
     ConfirmationRejection,
     PositionEntry { entry_level: f64 }, // TODO There is a timestamp in RealtimeEvent i should use
     PositionExit { exit_level: f64 },   // TODO There is a timestamp in RealtimeEvent i should use
+    RejectedAtRestApi,
 }
 
 #[derive(Debug)]
 pub enum Event {
+    WOCancel(OrderReference),
     Order(OrderEvent, OrderReference),
     Market {
         epic: String,
@@ -35,6 +37,7 @@ pub enum Event {
 
 #[derive(Debug)]
 pub enum Command {
+    Restart(OrderReference),
     FetchData {
         start: DateTime<Utc>,
         duration: Duration,
@@ -58,6 +61,7 @@ pub enum Command {
         level: f64,
         trailing_stop_distance: f64,
         target_distance: f64,
+        reference: OrderReference,
     },
     PublishTradeResults(TradeResult),
     FatalFailure(String),
@@ -105,7 +109,7 @@ impl Default for MarketInfo {
 
 impl MarketInfo {
     pub fn is_inside_trading_hours(&self, now: &DateTime<Utc>) -> bool {
-        *now > self.utc_open_time.add(Duration::minutes(1))
+        *now > self.utc_open_time.add(Duration::minutes(self.bars_in_opening_range as i64))
             && *now < self.utc_close_time.sub(Duration::minutes(15))
     }
     pub fn stop_distance(&self, opening_range_size: f64) -> f64 {
