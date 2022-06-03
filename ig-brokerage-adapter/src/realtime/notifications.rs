@@ -48,12 +48,12 @@ pub fn parse_trade_update(
                 let ref_id = confirmation.deal_reference.chars().next().unwrap();
                 if let Some(ref_id) = ref_id.to_digit(10) {
                     confirmation.deal_reference = get_reference_from_id(ref_id);
-                    info!("Included CONFS: {}", parts[0]);
                     Some(confirmation)
                 } else {
-                    warn!("Skipping CONFS due to old message: {}", parts[0]);
                     None }
-            } else { None }
+            } else {
+                warn!("Skipping CONFS due to old message: {}", parts[0]);
+                None }
         } else { None }
     } else {
         None
@@ -89,7 +89,7 @@ fn is_old_message(conf_time: String) -> bool {
     // Remove milliseconds
     let conf_time = &String::from("2022-06-02T18:47:43.065")[..19];
     let conf_time: DateTime<Utc> = DateTime::parse_from_rfc3339(format!("{}Z", conf_time).as_str()).unwrap().with_timezone(&Utc);
-    conf_time.add(Duration::seconds(10)) < Utc::now()
+    conf_time.add(Duration::seconds(10)) >= Utc::now()
 }
 
 pub fn parse_account_update(msg: &str, account: String) -> AccountUpdate {

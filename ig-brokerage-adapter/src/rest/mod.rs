@@ -162,8 +162,8 @@ impl IgRestClient<HasSession> {
         level: f64,
         deal_reference: &str,
         market_info: MarketInfo,
-        target_distance: usize,
-        stop_distance: usize,
+        target_distance: f64,
+        stop_distance: f64,
     ) -> Result<(), BrokerageError> {
         let SessionState { xst, cst, .. } = &*self.session.lock().await;
         let mut headers = HeaderMap::new();
@@ -257,8 +257,8 @@ impl IgRestClient<HasSession> {
         &self,
         deal_id: &str,
         stop_level: f64,
-        trailing_stop_distance: usize,
-        target_distance: usize,
+        trailing_stop_distance: f64,
+        target_distance: f64,
     ) -> Result<(), BrokerageError> {
         let SessionState {
             ref xst, ref cst, ..

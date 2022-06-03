@@ -5,7 +5,7 @@ use std::fmt::{Display, Formatter};
 use crate::decider::system::OpeningRange;
 
 pub const STRATEGY_VERSION: usize = 1;
-pub const RISK_REWARD_RATION: usize = 2;
+pub const RISK_REWARD_RATION: f64 = 2.;
 
 #[derive(Debug)]
 pub struct WorkingOrderMachine<S> {

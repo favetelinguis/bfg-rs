@@ -5,7 +5,7 @@ use chrono::{DateTime, NaiveDateTime, NaiveTime, Timelike, Utc};
 use ig_brokerage_adapter::realtime::models::{AccountUpdate, DealStatus, MarketState, MarketUpdate, OpenPositionUpdate, OpuStatus, PositionStatus, TradeConfirmationUpdate};
 use ig_brokerage_adapter::rest::models::FetchDataResponse;
 use ig_brokerage_adapter::{ConnectionDetails, IgBrokerageApi, RealtimeEvent};
-use log::info;
+use log::{debug, info};
 use std::borrow::{Borrow};
 use std::collections::{HashMap, LinkedList};
 use std::str::FromStr;
@@ -171,10 +171,15 @@ pub fn spawn_bfg(connection_details: ConnectionDetails, market_infos: Vec<Market
                 // This looping is so that commands can generate more events
                 while let Some((epic, event)) = events.pop_front() {
                     let commands = systems_manager.step_one(epic.clone(), &event) ;
+                    if let Event::Market {..} = event {
+                    } else {
+                        debug!("Epic: {} Event: {:?}", epic, event);
+                    }
                     for c in commands {
+                        debug!("Epic: {} Command: {:?}", epic, c);
                         let more_events: Vec<(String, Event)> = match c {
                             Command::FetchData {epic, start, duration } => {
-                                info!("Executing: FetchData");
+                                info!("Executing: FetchData for {}", epic);
                                 match brokerage
                                     .rest
                                     .fetch_data(epic.as_str(), start, duration)
@@ -196,7 +201,7 @@ pub fn spawn_bfg(connection_details: ConnectionDetails, market_infos: Vec<Market
                                 target_distance,
                                 stop_distance
                             } => {
-                                info!("Executing: CreateWorkingOrder");
+                                info!("Executing: CreateWorkingOrder for {}, target: {} stop: {}",epic, target_distance, stop_distance);
                                 let epic = market_info.epic.clone();
                                 if let Err(BrokerageError(error)) = brokerage
                                     .rest
@@ -210,7 +215,7 @@ pub fn spawn_bfg(connection_details: ConnectionDetails, market_infos: Vec<Market
                                 }
                             }
                             Command::UpdatePosition {epic, deal_id, level, trailing_stop_distance, target_distance} => {
-                                info!("Executing: UpdatePosition");
+                                info!("Executing: UpdatePosition for {}", epic);
                                 if let Err(BrokerageError(error)) = brokerage
                                     .rest
                                     .edit_position(deal_id.as_str(), level, trailing_stop_distance, target_distance)
@@ -227,7 +232,7 @@ pub fn spawn_bfg(connection_details: ConnectionDetails, market_infos: Vec<Market
                                 epic,
                                 ref reference_to_cancel,
                             } => {
-                                info!("Executing: CancelWorkingOrder");
+                                info!("Executing: CancelWorkingOrder for {}", epic);
                                 if let Some(deal_id) =
                                     trade_confirmation_cache.get_deal_id(reference_to_cancel)
                                 {
@@ -244,7 +249,7 @@ pub fn spawn_bfg(connection_details: ConnectionDetails, market_infos: Vec<Market
                                 } else { vec![] }
                             }
                             Command::PublishTradeResults(tr) => {
-                                info!("Executing: PublishTradeResults");
+                                info!("Executing: PublishTradeResults for {}", epic);
                                 let epic = tr.epic.clone();
                                 write_results_to_file(tr.clone());
                                 let view = TradeResultView {
@@ -260,7 +265,7 @@ pub fn spawn_bfg(connection_details: ConnectionDetails, market_infos: Vec<Market
                                 vec![(epic, Event::PositionExit(tr.reference.clone()))]
                             }
                             Command::FatalFailure(reason) => {
-                                info!("Executing: FatalFailure with reason {}", reason);
+                                info!("Executing: FatalFailure for {} with reason {}",epic, reason);
                                 vec![]
                             }
                         };

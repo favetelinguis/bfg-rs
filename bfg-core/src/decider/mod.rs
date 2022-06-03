@@ -6,6 +6,7 @@ use std::ops::{Add, Sub};
 pub mod order;
 pub mod system;
 
+#[derive(Debug)]
 pub enum OrderEvent {
     ConfirmationOpenAccepted { level: f64, deal_id: String },
     ConfirmationDeleteAccepted,
@@ -15,6 +16,7 @@ pub enum OrderEvent {
     PositionExit { exit_level: f64 },   // TODO There is a timestamp in RealtimeEvent i should use
 }
 
+#[derive(Debug)]
 pub enum Event {
     Order(OrderEvent, OrderReference),
     Market {
@@ -43,8 +45,8 @@ pub enum Command {
         price: f64,
         reference: OrderReference,
         market_info: MarketInfo,
-        target_distance: usize,
-        stop_distance: usize,
+        target_distance: f64,
+        stop_distance: f64,
     },
     CancelWorkingOrder {
         epic: String,
@@ -54,8 +56,8 @@ pub enum Command {
         epic: String,
         deal_id: String,
         level: f64,
-        trailing_stop_distance: usize,
-        target_distance: usize,
+        trailing_stop_distance: f64,
+        target_distance: f64,
     },
     PublishTradeResults(TradeResult),
     FatalFailure(String),
@@ -106,7 +108,7 @@ impl MarketInfo {
         *now > self.utc_open_time.add(Duration::minutes(1))
             && *now < self.utc_close_time.sub(Duration::minutes(15))
     }
-    pub fn stop_distance(&self, opening_range_size: f64) -> usize {
-        ((opening_range_size - 1.) / 3.).floor() as usize
+    pub fn stop_distance(&self, opening_range_size: f64) -> f64 {
+        ((opening_range_size - 1.) / 3.)
     }
 }

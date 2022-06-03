@@ -204,13 +204,13 @@ pub struct EditPositionRequest {
     #[serde(rename = "guaranteedStop")]
     pub guaranteed_stop: bool,
     #[serde(rename = "limitDistance")]
-    pub limit_distance: usize,
+    pub limit_distance: f64,
     #[serde(rename = "stopLevel")]
     pub stop_level: f64,
     #[serde(rename = "trailingStop")]
     pub trailing_stop: bool,
     #[serde(rename = "trailingStopDistance")]
-    pub trailing_stop_distance: usize,
+    pub trailing_stop_distance: f64,
     #[serde(rename = "trailingStopIncrement")]
     pub trailing_stop_increment: u8,
 }
@@ -220,8 +220,8 @@ impl Default for EditPositionRequest {
         Self {
             guaranteed_stop: false,
             stop_level: 0.,
-            limit_distance: 0,
-            trailing_stop_distance: 0,
+            limit_distance: 0.,
+            trailing_stop_distance: 0.,
             trailing_stop_increment: 1, // 1 looks to be the min level which is not ideal for markets that move little
             trailing_stop: true,
         }
@@ -229,7 +229,7 @@ impl Default for EditPositionRequest {
 }
 
 impl EditPositionRequest {
-    pub fn new(stop_level: f64, trailing_stop_distance: usize, target_distance: usize) -> Self {
+    pub fn new(stop_level: f64, trailing_stop_distance: f64, target_distance: f64) -> Self {
         Self {
             stop_level,
             trailing_stop_distance,
@@ -255,10 +255,10 @@ pub struct CreateWorkingOrderRequest {
     pub guaranteed_stop: bool,
     pub level: f64,
     #[serde(rename = "limitDistance")]
-    pub limit_distance: usize,
+    pub limit_distance: f64,
     pub size: u8,
     #[serde(rename = "stopDistance")]
-    pub stop_distance: usize,
+    pub stop_distance: f64,
     #[serde(rename = "timeInForce")]
     pub time_in_force: String,
     #[serde(rename = "type")]
@@ -278,8 +278,8 @@ impl Default for CreateWorkingOrderRequest {
             working_order_type: WorkingOrderType::LIMIT,
             level: 0.,
             guaranteed_stop: false,
-            stop_distance: 0,
-            limit_distance: 0,
+            stop_distance: 0.,
+            limit_distance: 0.,
             force_open: false, // Is this to be like netting? Dont understand this
             currency_code: "EUR".to_string(),
         }
@@ -290,7 +290,7 @@ impl Default for CreateWorkingOrderRequest {
 /// reference unique between markets and orders.
 /// Also good till data will close our 15 mins before market close
 impl CreateWorkingOrderRequest {
-    pub fn new(direction: Direction, level: f64, reference: &str, market_info: MarketInfo, target_distance: usize, stop_distance: usize) -> Self {
+    pub fn new(direction: Direction, level: f64, reference: &str, market_info: MarketInfo, target_distance: f64, stop_distance: f64) -> Self {
         let ref_id = get_reference_id(reference).to_string();
         let deal_reference = format!("{}{}", ref_id, market_info.epic).replace(".", ""); // needed to have unique references
         Self {

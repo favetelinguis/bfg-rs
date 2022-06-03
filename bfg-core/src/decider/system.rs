@@ -5,7 +5,7 @@ use crate::decider::{Command, Event, MarketInfo};
 use crate::models::OhlcPrice;
 use crate::models::{Direction, OrderReference};
 use chrono::{Duration, NaiveDateTime, Utc};
-use log::{error, warn};
+use log::{error, info, warn};
 
 #[derive(Debug)]
 pub struct SystemMachine<S> {
@@ -20,8 +20,6 @@ pub struct Setup;
 pub struct Error;
 #[derive(Debug)]
 pub struct AwaitData;
-#[derive(Debug)]
-pub struct DataFailure;
 #[derive(Debug)]
 pub struct DecideOrderPlacement {
     pub opening_range: OpeningRange,
@@ -48,16 +46,6 @@ impl From<SystemMachine<Setup>> for SystemMachine<AwaitData> {
     fn from(val: SystemMachine<Setup>) -> Self {
         Self {
             state: AwaitData,
-            market_info: val.market_info,
-            last_position_reference: val.last_position_reference,
-        }
-    }
-}
-
-impl From<SystemMachine<AwaitData>> for SystemMachine<DataFailure> {
-    fn from(val: SystemMachine<AwaitData>) -> Self {
-        Self {
-            state: DataFailure,
             market_info: val.market_info,
             last_position_reference: val.last_position_reference,
         }
@@ -208,7 +196,8 @@ impl System {
             // AwaitData -> DecideOrderPlacement []
             (System::AwaitData(val), Event::Data { prices, .. }) if !prices.is_empty() => {
                 let opening_range = create_opening_range_from_ohlcs(prices);
-                if (opening_range.range_size() >= val.market_info.min_tradable_opening_range) || (opening_range.range_size() <= (val.market_info.min_tradable_opening_range * 10.)) { // TODO x10 is huge to much risk need to figure out what i can do here
+                if (opening_range.range_size() >= val.market_info.min_tradable_opening_range) && (opening_range.range_size() <= (val.market_info.min_tradable_opening_range * 10.)) { // TODO x10 is huge to much risk need to figure out what i can do here
+                    info!("Trading range is {} for {}", opening_range.range_size(), val.market_info.epic);
                     let mut new_state: SystemMachine<DecideOrderPlacement> = val.into();
                     new_state.state.opening_range = opening_range;
                     (System::DecideOrderPlacement(new_state), vec![])
@@ -394,7 +383,7 @@ fn create_fetch_data_command(market_info: &MarketInfo) -> Command {
     }
 }
 
-fn is_price_over(stop_distance: usize, opening_range: &OpeningRange, bid: f64, ask: f64, last_trade_reference: &Option<OrderReference>) -> bool {
+fn is_price_over(stop_distance: f64, opening_range: &OpeningRange, bid: f64, ask: f64, last_trade_reference: &Option<OrderReference>) -> bool {
     let level = (bid + ask) / 2.;
     let buffer: f64;
     if let Some(OrderReference::BETWEEN_SHORT | OrderReference::UNDER_SHORT) = last_trade_reference {
@@ -408,7 +397,7 @@ fn is_price_over(stop_distance: usize, opening_range: &OpeningRange, bid: f64, a
 
 /// Opening range must be 3.4x stop distance
 /// If we try to change direction we have a buffer of 3x stop distance so that leave some distance when we force a 3.4x opening range to always have room to trigger.
-fn is_price_between(stop_distance: usize, opening_range: &OpeningRange, bid: f64, ask: f64, last_trade_reference: &Option<OrderReference>) -> bool {
+fn is_price_between(stop_distance: f64, opening_range: &OpeningRange, bid: f64, ask: f64, last_trade_reference: &Option<OrderReference>) -> bool {
     let level = (bid + ask) / 2.;
     let mut long_buffer = stop_distance as f64;
     let mut short_buffer = stop_distance as f64;
@@ -426,7 +415,7 @@ fn is_price_between(stop_distance: usize, opening_range: &OpeningRange, bid: f64
     is_or_large_enough && is_price_between
 }
 
-fn is_price_under(stop_distance: usize, opening_range: &OpeningRange, bid: f64, ask: f64, last_trade_reference: &Option<OrderReference>) -> bool {
+fn is_price_under(stop_distance: f64, opening_range: &OpeningRange, bid: f64, ask: f64, last_trade_reference: &Option<OrderReference>) -> bool {
     let level = (bid + ask) / 2.;
     let buffer;
     if let Some(OrderReference::BETWEEN_LONG | OrderReference::OVER_LONG) = last_trade_reference {
@@ -598,7 +587,7 @@ mod tests {
     fn e_market_inside_trading_hours(bid: f64, ask: f64) -> Event {
         Event::Market {
             epic: "".to_string(),
-            update_time: Utc::now().time(),
+            update_time: Utc::now(),
             bid,
             ask,
         }
