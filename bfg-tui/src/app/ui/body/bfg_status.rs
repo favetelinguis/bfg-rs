@@ -153,7 +153,7 @@ pub fn draw_account_view<'a>(state: &AccountView) -> Paragraph<'a> {
         state.margin.map(|n| n.to_string()).unwrap_or_default()
     );
     let equity_used = format!(
-        "Equity Used: {}",
+        "Equity Used: {}%",
         state.equity_used.map(|n| n.to_string()).unwrap_or_default()
     );
     Paragraph::new(vec![
