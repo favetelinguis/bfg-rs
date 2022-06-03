@@ -23,8 +23,8 @@ async fn main() -> Result<()> {
     let todays_file = Utc::now().date().to_string();
     let mut path = home_dir().expect("always have a home");
     path.push(format!("bfg/demo/{}.log", todays_file));
-    tui_logger::init_logger(LevelFilter::Debug).unwrap();
-    tui_logger::set_default_level(LevelFilter::Debug);
+    tui_logger::init_logger(LevelFilter::Info).unwrap();
+    tui_logger::set_default_level(LevelFilter::Info);
     tui_logger::set_log_file(path.to_str().expect("The path to log file in bfg/demo fail")).unwrap();
 
     // Channel for IgEvent

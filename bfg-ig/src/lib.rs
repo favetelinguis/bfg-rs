@@ -221,11 +221,10 @@ pub fn spawn_bfg(connection_details: ConnectionDetails, market_infos: Vec<Market
                                     .edit_position(deal_id.as_str(), level, trailing_stop_distance, target_distance)
                                     .await
                                 {
-                                    vec![(epic, Event::Error(error
-                                    ))]
-                                } else {
                                     // TODO rough to retry everything, probably only want this for som errors
                                     vec![(epic, Event::Order(OrderEvent::RejectedAtRestApi, reference))]
+                                } else {
+                                    vec![]
                                 }
                             }
                             /// Use the provided reference and the order cache to find order id to cancel
