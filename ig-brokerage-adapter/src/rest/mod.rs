@@ -14,7 +14,7 @@ use std::marker::PhantomData;
 use std::ops::{Add, Sub};
 use std::sync::Arc;
 use chrono::{DateTime, Duration, NaiveDateTime, Utc};
-use log::warn;
+use log::{info, warn};
 use tokio::sync::Mutex;
 use bfg_core::decider::MarketInfo;
 
@@ -258,11 +258,12 @@ impl IgRestClient<HasSession> {
         deal_id: &str,
         stop_level: f64,
         trailing_stop_distance: f64,
-        target_distance: f64,
+        target_level: f64,
     ) -> Result<(), BrokerageError> {
         let SessionState {
             ref xst, ref cst, ..
         } = &*self.session.lock().await;
+        let body = EditPositionRequest::new(stop_level, trailing_stop_distance, target_level);
         let mut headers = HeaderMap::new();
         headers.insert(ACCEPT, "application/json; charset=UTF-8".parse().unwrap());
         headers.insert(
@@ -283,7 +284,7 @@ impl IgRestClient<HasSession> {
                 self.connection_details.base_url, "positions/otc", deal_id
             ))
             .headers(headers)
-            .json(EditPositionRequest::new(stop_level, trailing_stop_distance, target_distance).borrow())
+            .json(&body)
             .send()
             .await
             .map_err(|e| BrokerageError(e.to_string()))?;

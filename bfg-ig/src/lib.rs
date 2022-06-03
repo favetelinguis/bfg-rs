@@ -214,15 +214,14 @@ pub fn spawn_bfg(connection_details: ConnectionDetails, market_infos: Vec<Market
                                     vec![]
                                 }
                             }
-                            Command::UpdatePosition {epic, deal_id, level, trailing_stop_distance, target_distance, reference} => {
+                            Command::UpdatePosition {epic, deal_id, stop_level, trailing_stop_distance, target_level, reference} => {
                                 info!("Executing: UpdatePosition for {}", epic);
                                 if let Err(BrokerageError(error)) = brokerage
                                     .rest
-                                    .edit_position(deal_id.as_str(), level, trailing_stop_distance, target_distance)
+                                    .edit_position(deal_id.as_str(), stop_level, trailing_stop_distance, target_level)
                                     .await
                                 {
-                                    // TODO rough to retry everything, probably only want this for som errors
-                                    vec![(epic, Event::Order(OrderEvent::RejectedAtRestApi, reference))]
+                                    vec![(epic.clone(), Event::Error(error))]
                                 } else {
                                     vec![]
                                 }

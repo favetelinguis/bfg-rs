@@ -203,8 +203,8 @@ pub struct RefreshTokenRequest {
 pub struct EditPositionRequest {
     #[serde(rename = "guaranteedStop")]
     pub guaranteed_stop: bool,
-    #[serde(rename = "limitDistance")]
-    pub limit_distance: f64,
+    #[serde(rename = "limitLevel")]
+    pub limit_level: f64,
     #[serde(rename = "stopLevel")]
     pub stop_level: f64,
     #[serde(rename = "trailingStop")]
@@ -220,7 +220,7 @@ impl Default for EditPositionRequest {
         Self {
             guaranteed_stop: false,
             stop_level: 0.,
-            limit_distance: 0.,
+            limit_level: 0.,
             trailing_stop_distance: 0.,
             trailing_stop_increment: 1, // 1 looks to be the min level which is not ideal for markets that move little
             trailing_stop: true,
@@ -229,11 +229,11 @@ impl Default for EditPositionRequest {
 }
 
 impl EditPositionRequest {
-    pub fn new(stop_level: f64, trailing_stop_distance: f64, target_distance: f64) -> Self {
+    pub fn new(stop_level: f64, trailing_stop_distance: f64, target_level: f64) -> Self {
         Self {
             stop_level,
             trailing_stop_distance,
-            limit_distance: target_distance,
+            limit_level: target_level,
             ..EditPositionRequest::default()
         }
     }

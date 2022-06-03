@@ -390,10 +390,10 @@ impl WorkingOrder {
                 }
                 let command = Command::UpdatePosition {
                     epic: val.market_info.epic.clone(),
-                    level: val.state.actual_entry_level + (stop_distance as f64 * direction_multiple),
+                    stop_level: val.state.actual_entry_level + (stop_distance * direction_multiple),
                     deal_id: val.state.deal_id.clone(),
                     trailing_stop_distance: stop_distance,
-                    target_distance: stop_distance * RISK_REWARD_RATION,
+                    target_level: val.state.actual_entry_level - (stop_distance * RISK_REWARD_RATION * direction_multiple),
                     reference: val.state.reference.clone(),
                 };
                 (
@@ -407,14 +407,6 @@ impl WorkingOrder {
                 Event::Order(OrderEvent::ConfirmationAmendedAccepted, _),
             ) => (
                 WorkingOrder::PositionTrailingStopAccepted(val.into()),
-                vec![],
-            ),
-            // AwaitingTrailingStopConfirmation -> PositionOpened (retry trailing stop)
-            (
-                WorkingOrder::AwaitingTrailingStopConfirmation(val),
-                Event::Order(OrderEvent::RejectedAtRestApi, _),
-            ) => (
-                WorkingOrder::PositionOpened(val.into()),
                 vec![],
             ),
             // AwaitingTrailingStopConfirmation -> PositionOpened (retry trailing stop)

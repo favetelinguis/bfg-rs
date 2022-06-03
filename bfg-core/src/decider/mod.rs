@@ -14,7 +14,6 @@ pub enum OrderEvent {
     ConfirmationRejection,
     PositionEntry { entry_level: f64 }, // TODO There is a timestamp in RealtimeEvent i should use
     PositionExit { exit_level: f64 },   // TODO There is a timestamp in RealtimeEvent i should use
-    RejectedAtRestApi,
 }
 
 #[derive(Debug)]
@@ -58,9 +57,9 @@ pub enum Command {
     UpdatePosition {
         epic: String,
         deal_id: String,
-        level: f64,
+        stop_level: f64,
         trailing_stop_distance: f64,
-        target_distance: f64,
+        target_level: f64,
         reference: OrderReference,
     },
     PublishTradeResults(TradeResult),
@@ -113,6 +112,6 @@ impl MarketInfo {
             && *now < self.utc_close_time.sub(Duration::minutes(15))
     }
     pub fn stop_distance(&self, opening_range_size: f64) -> f64 {
-        ((opening_range_size - 1.) / 3.)
+        (opening_range_size - 1.) / 3.
     }
 }
