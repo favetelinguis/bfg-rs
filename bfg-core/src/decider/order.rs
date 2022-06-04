@@ -423,6 +423,7 @@ impl WorkingOrder {
                 Event::Order(OrderEvent::PositionExit { exit_level }, _),
             ) => {
                 let epic = val.market_info.epic.clone();
+                let size = val.market_info.lot_size;
                 let range_size = val.opening_range.range_size();
                 let mut new_state: WorkingOrderMachine<PositionExited> = val.into();
                 new_state.state.exit_level = exit_level.clone();
@@ -436,6 +437,7 @@ impl WorkingOrder {
                     reference: new_state.state.reference.clone(),
                     opening_range_size: range_size,
                     strategy_version: STRATEGY_VERSION,
+                    size,
                     epic,
                 });
                 (WorkingOrder::PositionExited(new_state), vec![command])
@@ -446,6 +448,7 @@ impl WorkingOrder {
                 Event::Order(OrderEvent::PositionExit { exit_level }, _),
             ) => {
                 let epic = val.market_info.epic.clone();
+                let size = val.market_info.lot_size;
                 let range_size = val.opening_range.range_size();
                 let mut new_state: WorkingOrderMachine<PositionExited> = val.into();
                 new_state.state.exit_level = exit_level.clone();
@@ -458,6 +461,7 @@ impl WorkingOrder {
                     reference: new_state.state.reference.clone(),
                     opening_range_size: range_size,
                     strategy_version: STRATEGY_VERSION,
+                    size,
                     epic,
                 });
                 (WorkingOrder::PositionExited(new_state), vec![command])
@@ -468,6 +472,7 @@ impl WorkingOrder {
                 Event::Order(OrderEvent::PositionExit { exit_level }, _),
             ) => {
                 let epic = val.market_info.epic.clone();
+                let size = val.market_info.lot_size;
                 let range_size = val.opening_range.range_size();
                 let mut new_state: WorkingOrderMachine<PositionExited> = val.into();
                 new_state.state.exit_level = exit_level.clone();
@@ -480,6 +485,7 @@ impl WorkingOrder {
                     reference: new_state.state.reference.clone(),
                     opening_range_size: range_size,
                     strategy_version: STRATEGY_VERSION,
+                    size,
                     epic,
                 });
                 (WorkingOrder::PositionExited(new_state), vec![command])

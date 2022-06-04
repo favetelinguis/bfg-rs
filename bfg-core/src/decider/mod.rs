@@ -68,6 +68,7 @@ pub enum Command {
 
 #[derive(Debug, Clone)]
 pub struct TradeResult {
+    pub size: u8,
     pub wanted_entry_level: f64,
     pub actual_entry_level: f64,
     pub entry_time: DateTime<Utc>,
