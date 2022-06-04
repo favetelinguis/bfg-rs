@@ -84,7 +84,7 @@ pub struct TradeResult {
 pub struct MarketInfo {
     pub epic: String,
     pub bars_in_opening_range: u8,
-    pub min_tradable_opening_range: f64,
+    pub min_stop: f64,
     pub expiry: String,
     pub currency: String,
     pub lot_size: u8,
@@ -97,7 +97,7 @@ impl Default for MarketInfo {
         Self {
             epic: "".to_string(),
             bars_in_opening_range: 0,
-            min_tradable_opening_range: 0.0,
+            min_stop: 0.0,
             expiry: "".to_string(),
             currency: "".to_string(),
             lot_size: 0,

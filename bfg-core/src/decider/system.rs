@@ -7,6 +7,9 @@ use crate::models::{Direction, OrderReference};
 use chrono::{Duration, NaiveDateTime, Utc};
 use log::{error, info, warn};
 
+const OPENING_RANGE_MULTIPLIER: f64 = 3.;
+const MIN_STOP_MULTIPLIER: f64 = 5.4;
+
 #[derive(Debug)]
 pub struct SystemMachine<S> {
     pub state: S,
@@ -196,7 +199,9 @@ impl System {
             // AwaitData -> DecideOrderPlacement []
             (System::AwaitData(val), Event::Data { prices, .. }) if !prices.is_empty() => {
                 let opening_range = create_opening_range_from_ohlcs(prices);
-                if (opening_range.range_size() >= val.market_info.min_tradable_opening_range) && (opening_range.range_size() <= (val.market_info.min_tradable_opening_range * 10.)) { // TODO x10 is huge to much risk need to figure out what i can do here
+                // We add +1 since we always want to leave a 1pip open in the or channel for orders to open in between mode
+                // since we can use 1R and 2R in decide order placement that leave 1pip left.
+                if (opening_range.range_size() >= ((val.market_info.min_stop * OPENING_RANGE_MULTIPLIER) + 1.)) && (opening_range.range_size() <= (((  val.market_info.min_stop * MIN_STOP_MULTIPLIER) * OPENING_RANGE_MULTIPLIER) + 1.)) {
                     info!("Trading range is {} for {}", opening_range.range_size(), val.market_info.epic);
                     let mut new_state: SystemMachine<DecideOrderPlacement> = val.into();
                     new_state.state.opening_range = opening_range;
