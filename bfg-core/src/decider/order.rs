@@ -422,6 +422,7 @@ impl WorkingOrder {
                 WorkingOrder::AwaitingTrailingStopConfirmation(val),
                 Event::Order(OrderEvent::PositionExit { exit_level }, _),
             ) => {
+                let one_r = val.market_info.stop_distance(val.opening_range.range_size());
                 let epic = val.market_info.epic.clone();
                 let size = val.market_info.lot_size;
                 let range_size = val.opening_range.range_size();
@@ -437,6 +438,7 @@ impl WorkingOrder {
                     reference: new_state.state.reference.clone(),
                     opening_range_size: range_size,
                     strategy_version: STRATEGY_VERSION,
+                    one_r,
                     size,
                     epic,
                 });
@@ -447,6 +449,7 @@ impl WorkingOrder {
                 WorkingOrder::PositionTrailingStopAccepted(val),
                 Event::Order(OrderEvent::PositionExit { exit_level }, _),
             ) => {
+                let one_r = val.market_info.stop_distance(val.opening_range.range_size());
                 let epic = val.market_info.epic.clone();
                 let size = val.market_info.lot_size;
                 let range_size = val.opening_range.range_size();
@@ -461,6 +464,7 @@ impl WorkingOrder {
                     reference: new_state.state.reference.clone(),
                     opening_range_size: range_size,
                     strategy_version: STRATEGY_VERSION,
+                    one_r,
                     size,
                     epic,
                 });
@@ -471,6 +475,7 @@ impl WorkingOrder {
                 WorkingOrder::PositionOpened(val),
                 Event::Order(OrderEvent::PositionExit { exit_level }, _),
             ) => {
+                let one_r = val.market_info.stop_distance(val.opening_range.range_size());
                 let epic = val.market_info.epic.clone();
                 let size = val.market_info.lot_size;
                 let range_size = val.opening_range.range_size();
@@ -487,6 +492,7 @@ impl WorkingOrder {
                     strategy_version: STRATEGY_VERSION,
                     size,
                     epic,
+                    one_r,
                 });
                 (WorkingOrder::PositionExited(new_state), vec![command])
             }

@@ -77,7 +77,8 @@ pub struct TradeResult {
     pub reference: OrderReference,
     pub epic: String,
     pub opening_range_size: f64,
-    pub strategy_version: usize
+    pub strategy_version: usize,
+    pub one_r: f64,
 }
 
 #[derive(Debug, Clone)]
