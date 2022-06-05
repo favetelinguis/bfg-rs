@@ -16,3 +16,4 @@ Cargo.lock
 **/config.json
 
 **/*.ods#
+.ipynb_checkpoints/
