@@ -1,6 +1,7 @@
 use std::env::home_dir;
 use std::str::FromStr;
 use chrono::{DateTime, NaiveDate, NaiveTime, Timelike, TimeZone, Utc};
+use log::error;
 use bfg_ig::models::{ConnectionDetails, MarketInfo};
 use serde::{Deserialize, Serialize};
 use tokio::fs;
@@ -36,11 +37,17 @@ impl BfgConfig {
         let mut path = home_dir().expect("always have a home");
         path.push("bfg/demo/config.json");
         let data = fs::read_to_string(path.as_path()).await.expect("Unable to read file");
-        let json: InternalConfig = serde_json::from_str(&data)
-            .expect("JSON is not the correct format");
-        Self {
-            connection_details: json.connection_details,
-            epics: json.epics.iter().cloned().filter_map(|v| v.try_into().ok()).collect(),
+        match serde_json::from_str::<InternalConfig>(&data)  {
+            Ok(json) => {
+                Self {
+                    connection_details: json.connection_details,
+                    epics: json.epics.iter().cloned().filter_map(|v| v.try_into().ok()).collect(),
+                }
+            }
+            Err(e) => {
+                error!("Failed reading config: {}", e);
+                panic!("Unable to read config")
+            }
         }
     }
 }

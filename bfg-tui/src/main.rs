@@ -1,3 +1,5 @@
+extern crate core;
+
 use std::env::home_dir;
 use bfg_tui::app::App;
 use bfg_tui::io::handler::IoAsyncHandler;
@@ -7,7 +9,7 @@ use dotenvy::dotenv;
 use eyre::Result;
 use std::sync::Arc;
 use chrono::Utc;
-use log::LevelFilter;
+use log::{info, LevelFilter};
 use tokio::select;
 use bfg_ig::{IgEvent, spawn_bfg};
 use bfg_ig::models::ConnectionDetails;

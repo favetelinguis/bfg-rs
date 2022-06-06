@@ -14,7 +14,7 @@ use std::marker::PhantomData;
 use std::ops::{Add, Sub};
 use std::sync::Arc;
 use chrono::{DateTime, Duration, NaiveDateTime, Utc};
-use log::{info, warn};
+use log::{error, info, warn};
 use tokio::sync::Mutex;
 use bfg_core::decider::MarketInfo;
 
@@ -67,6 +67,7 @@ impl IgRestClient<NoSession> {
         if !res.status().is_success() {
             let status = res.status().as_u16();
             let message = res.text().await.unwrap();
+            error!("Failed creating session with IG {} {}", status, message);
             return Err(BrokerageError(format!("create_session failure with status: {} message: {}", status, message)));
         }
 
