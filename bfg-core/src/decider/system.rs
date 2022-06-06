@@ -423,10 +423,8 @@ fn is_price_between(stop_distance: f64, opening_range: &OpeningRange, bid: f64, 
     if let Some(OrderReference::BETWEEN_SHORT | OrderReference::UNDER_SHORT) = last_trade_reference {
         long_buffer = 2. * stop_distance as f64;
     }
-    let is_or_large_enough = opening_range.range_size() >= (3.4 * stop_distance as f64);
-    let is_price_between = (level < (opening_range.get_middle_price_high() - short_buffer))
-        && (level > (opening_range.get_middle_price_low() + long_buffer));
-    is_or_large_enough && is_price_between
+    (level < (opening_range.get_middle_price_high() - short_buffer))
+        && (level > (opening_range.get_middle_price_low() + long_buffer))
 }
 
 fn is_price_under(stop_distance: f64, opening_range: &OpeningRange, bid: f64, ask: f64, last_trade_reference: &Option<OrderReference>) -> bool {
