@@ -298,7 +298,7 @@ impl WorkingOrder {
             ) => {
                 // If any WOOpen is rejected we want to fail
                 let mut commands: Vec<Command> = vec![Command::Restart(reference.clone())];
-                if let OrderReference::BETWEEN_LONG | OrderReference::BETWEEN_SHORT = reference {
+                if let OrderReference::BETWEEN_LONG = reference {
                     commands = vec![Command::CancelWorkingOrder {
                         epic: val.market_info.epic.clone(), reference_to_cancel: OrderReference::BETWEEN_SHORT
                     }, Command::Restart(reference.clone())];

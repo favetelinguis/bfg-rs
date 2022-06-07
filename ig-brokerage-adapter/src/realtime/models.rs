@@ -111,6 +111,7 @@ pub struct TradeConfirmationUpdate {
     #[serde(rename = "profitCurrency")]
     pub profit_currency: Option<String>,
     pub date: String,
+    pub channel: String,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]

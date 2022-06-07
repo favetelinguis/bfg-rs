@@ -131,23 +131,21 @@ pub fn spawn_bfg(connection_details: ConnectionDetails, market_infos: Vec<Market
     let (brokerage_tx, mut ig_rx) = tokio::sync::mpsc::channel::<RealtimeEvent>(10);
     tokio::spawn(async move {
         let mut systems_manager = SystemsManager::new(&market_infos[..]);
-        let brokerage = IgBrokerageApi::new(connection_details, market_infos, brokerage_tx).await;
-        let mut market_cache = MarketCache::default();
-        let mut trade_confirmation_cache = TradeConfirmationCache::default();
-        let mut open_position_cache = OpenPositionCache::default();
         let mut account_cache = AccountCache::default();
+        let brokerage = IgBrokerageApi::new(connection_details, market_infos, brokerage_tx).await;
         while let Some(event) = ig_rx.recv().await {
             let core_event: Option<(String, Event)> = match event {
                 RealtimeEvent::MarketEvent(update) => {
-                    let system_event = market_cache.update(update);
-                    ig_tx.send(market_cache.get_current_view()).await.expect("Sending message failure");
+                    let temp_epic = update.epic.clone();
+                    let system_event = systems_manager.update_market(update.epic.clone(), update);
+                    ig_tx.send(systems_manager.get_market_view(temp_epic)).await.expect("Sending message failure");
                     system_event
                 },
                 RealtimeEvent::TradeConfirmation(update) => {
-                    trade_confirmation_cache.update(update)
+                    systems_manager.update_confirms(update.epic.clone(), update)
                 }
                 RealtimeEvent::AccountPositionUpdate(update) => {
-                    open_position_cache.update(update)
+                    systems_manager.update_account_position(update.epic.clone(), update)
                 }
                 RealtimeEvent::AccountEvent(update) => {
                     account_cache.update(update);
@@ -233,8 +231,9 @@ pub fn spawn_bfg(connection_details: ConnectionDetails, market_infos: Vec<Market
                             } => {
                                 info!("Executing: CancelWorkingOrder for {}", epic);
                                 if let Some(deal_id) =
-                                    trade_confirmation_cache.get_deal_id(reference_to_cancel)
+                                systems_manager.get_deal_id(epic.clone(), reference_to_cancel)
                                 {
+                                    info!("CancelWorkingOrder for deal id {}", deal_id);
                                     if let Err(BrokerageError(error)) = brokerage
                                         .rest
                                         .delete_working_order(deal_id.as_str())
@@ -243,9 +242,12 @@ pub fn spawn_bfg(connection_details: ConnectionDetails, market_infos: Vec<Market
                                         vec![(epic, Event::Error(error
                                         ))]
                                     } else {
+                                        debug!("Executing CancelWorkingOrder successfully for deal id {}", deal_id);
                                         vec![]
                                     }
-                                } else { vec![] }
+                                } else {
+                                    debug!("Unable to find deal id for reference {:?}", reference_to_cancel);
+                                    vec![] }
                             }
                             Command::PublishTradeResults(tr) => {
                                 info!("Executing: PublishTradeResults for {}", epic);
@@ -399,13 +401,16 @@ struct TradeConfirmationCache {
 }
 
 impl TradeConfirmationCache {
+    // Only care about updates for known OrderReferences, this allows me to do manual order from the we and
+    // have trade system running since they will not interfere
     fn update(&mut self, update: TradeConfirmationUpdate) -> Option<(String, Event)> {
         let deal_reference: Option<OrderReference> = FromStr::from_str(update.deal_reference.as_str()).ok();
-        // Only cara about updates for known OrderReferences, since i get an old snapshot if i have done orders in gui or api i can get a snapshot with
         if let Some(reference) = deal_reference {
             self.confirms.insert(reference.clone(), update);
             self.get_current_event(reference.borrow())
-        } else { None }
+        } else {
+            debug!("Got unknown deal reference {:?}", deal_reference);
+            None }
     }
 
     fn get_current_event(&self, deal_reference: &OrderReference) -> Option<(String, Event)> {
@@ -471,10 +476,17 @@ struct OpenPositionCache {
 
 impl OpenPositionCache {
     fn update(&mut self, update: OpenPositionUpdate) -> Option<(String, Event)> {
-        let deal_reference: OrderReference = FromStr::from_str(update.deal_reference.as_str())
-            .expect("Only supported deal references should be possible");
-        self.positions.insert(deal_reference.clone(), update);
-        self.get_current_event(deal_reference.borrow())
+        // Only care about updates for known OrderReferences, this allows me to do manual order from the we and
+        // have trade system running since they will not interfere
+        let deal_reference: Option<OrderReference >= FromStr::from_str(update.deal_reference.as_str()).ok();
+        if let Some(reference) = deal_reference {
+            self.positions.insert(reference.clone(), update);
+            self.get_current_event(reference.borrow())
+
+        } else {
+            debug!("Got unknown deal reference {:?}", deal_reference);
+            None
+        }
     }
 
     fn get_current_event(&self, deal_reference: &OrderReference) -> Option<(String, Event)> {
