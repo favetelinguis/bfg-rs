@@ -507,11 +507,12 @@ fn is_add_trailing_stop_triggered(
     reference: &OrderReference,
     level: f64,
 ) -> bool {
-    if let OrderReference::BETWEEN_LONG | OrderReference::OVER_LONG = reference {
-        bid.clone() > level
-    } else {
-        ask.clone() < level
-    }
+    // if let OrderReference::BETWEEN_LONG | OrderReference::OVER_LONG = reference {
+    //     bid.clone() > level
+    // } else {
+    //     ask.clone() < level
+    // }
+    false // DISABLE trailing stop
 }
 
 pub struct WorkingOrderFactory;

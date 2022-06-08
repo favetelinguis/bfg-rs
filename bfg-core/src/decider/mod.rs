@@ -68,7 +68,7 @@ pub enum Command {
 
 #[derive(Debug, Clone)]
 pub struct TradeResult {
-    pub size: u8,
+    pub size: f64,
     pub wanted_entry_level: f64,
     pub actual_entry_level: f64,
     pub entry_time: DateTime<Utc>,
@@ -84,12 +84,12 @@ pub struct TradeResult {
 #[derive(Debug, Clone)]
 pub struct MarketInfo {
     pub epic: String,
-    pub bars_in_opening_range: u8,
+    pub bars_in_opening_range: usize,
     pub min_stop: f64,
     pub max_stop_multiplier: f64,
     pub expiry: String,
     pub currency: String,
-    pub lot_size: u8,
+    pub lot_size: f64,
     pub utc_open_time: DateTime<Utc>,
     pub utc_close_time: DateTime<Utc>,
 }
@@ -103,7 +103,7 @@ impl Default for MarketInfo {
             max_stop_multiplier: 0.0,
             expiry: "".to_string(),
             currency: "".to_string(),
-            lot_size: 0,
+            lot_size: 0.,
             utc_open_time: Utc::now().sub(Duration::minutes(10)),
             utc_close_time: Utc::now().add(Duration::hours(5)),
         }
@@ -115,7 +115,8 @@ impl MarketInfo {
         *now > self.utc_open_time.add(Duration::minutes(self.bars_in_opening_range as i64))
             && *now < self.utc_close_time.sub(Duration::minutes(15))
     }
+    // I use this when i have 2x to switch direction but now i have removed the 2x (opening_range_size - 1.) / 3.
     pub fn stop_distance(&self, opening_range_size: f64) -> f64 {
-        (opening_range_size - 1.) / 3.
+        ((opening_range_size) / 3.)
     }
 }

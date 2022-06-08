@@ -1,14 +1,17 @@
 use bfg_core::decider::{Command, Event, OrderEvent, TradeResult, MarketInfo};
 use chrono_tz::Europe::{London, Stockholm};
 use bfg_core::models::{OhlcPrice, OrderReference, Price};
-use chrono::{DateTime, NaiveDateTime, NaiveTime, Timelike, Utc};
+use chrono::{DateTime, Duration, NaiveDateTime, NaiveTime, Timelike, Utc};
 use ig_brokerage_adapter::realtime::models::{AccountUpdate, DealStatus, MarketState, MarketUpdate, OpenPositionUpdate, OpuStatus, PositionStatus, TradeConfirmationUpdate};
 use ig_brokerage_adapter::rest::models::FetchDataResponse;
 use ig_brokerage_adapter::{ConnectionDetails, IgBrokerageApi, RealtimeEvent};
-use log::{debug, info};
+use log::{debug, error, info, warn};
 use std::borrow::{Borrow};
 use std::collections::{HashMap, LinkedList};
+use std::ops::Sub;
 use std::str::FromStr;
+use ta::{DataItem, Next};
+use ta::indicators::AverageTrueRange;
 use tokio::sync::mpsc::Sender;
 use bfg_core::decider::order::WorkingOrder;
 use bfg_core::decider::system::{System, SystemFactory};
@@ -132,7 +135,9 @@ pub fn spawn_bfg(connection_details: ConnectionDetails, market_infos: Vec<Market
     tokio::spawn(async move {
         let mut systems_manager = SystemsManager::new(&market_infos[..]);
         let mut account_cache = AccountCache::default();
-        let brokerage = IgBrokerageApi::new(connection_details, market_infos, brokerage_tx).await;
+        let epics = market_infos.iter().map(|d| d.epic.clone()).collect();
+        let brokerage = IgBrokerageApi::new(connection_details, epics, brokerage_tx).await;
+        brokerage.schedule_atr_update(&market_infos[..]);
         while let Some(event) = ig_rx.recv().await {
             let core_event: Option<(String, Event)> = match event {
                 RealtimeEvent::MarketEvent(update) => {
@@ -158,6 +163,20 @@ pub fn spawn_bfg(connection_details: ConnectionDetails, market_infos: Vec<Market
                         stream_status: status
                     })).await.expect("Sending message failure");
                     None
+                },
+                RealtimeEvent::AtrEvent(epic) => {
+                    let start = Utc::now().with_second(0).unwrap().sub(Duration::minutes(4));
+                    if let Ok(data) = brokerage.rest.fetch_data(epic.as_str(), start, Duration::minutes(5)).await {
+                        // info!("response is {:?}", data);
+                        let atr = calculate_atr(extract_prices(data));
+                        // Some((epic, Event::Atr {atr}))
+                        info!("5 period ATR for {} is {}", epic, atr);
+                        // TODO post atr to TUI and show in market view
+                        None
+                    } else {
+                        info!("Error failure to update ATR for {}", epic);
+                        None
+                    }
                 }
             };
 
@@ -219,7 +238,10 @@ pub fn spawn_bfg(connection_details: ConnectionDetails, market_infos: Vec<Market
                                     .edit_position(deal_id.as_str(), stop_level, trailing_stop_distance, target_level)
                                     .await
                                 {
-                                    vec![(epic.clone(), Event::Error(error))]
+                                    // Update position can not fail, it fails if I try to update a position that do not exist for
+                                    // example with can be the case in some timings so best is to just ignore failure and log it
+                                    warn!("Failed to update working order for {} with error {}", epic.clone(), error);
+                                    vec![]
                                 } else {
                                     vec![]
                                 }
@@ -280,6 +302,25 @@ pub fn spawn_bfg(connection_details: ConnectionDetails, market_infos: Vec<Market
             }
         }
     });
+}
+
+fn calculate_atr(prices: Vec<OhlcPrice>) -> f64 {
+    if prices.len() != 5 {
+        error!("5 periods are required for ATR calculation but {} is provided", prices.len());
+    }
+    let mut indicator = AverageTrueRange::new(5).unwrap();
+    let mut latest_atr = Default::default();
+    for v in prices {
+        let di = DataItem::builder()
+            .high(v.high.ask)
+            .low(v.low.ask)
+            .open(v.open.ask)
+            .close(v.close.ask)
+            .volume(0.)
+            .build().unwrap();
+        latest_atr = indicator.next(&di);
+    }
+    latest_atr
 }
 
 

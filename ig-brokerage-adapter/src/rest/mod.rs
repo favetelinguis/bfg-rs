@@ -113,11 +113,9 @@ impl IgRestClient<HasSession> {
     ) -> Result<FetchDataResponse, BrokerageError> {
         let start = start.with_timezone(&Stockholm);
         let dt_start_format = start.format("%Y-%m-%dT%H:%M:%S").to_string();
-        // We always substract 1minute since we send number bars wich will always be minimum 1
-        // but in reality will give us 2 bars when start 9:00 and end 9:01
-        // we need start 9:00 and end 9:00 to only get one bar back
-        let dt_end = start.add(duration.sub(Duration::minutes(1)));
+        let dt_end = start.add(duration);
         let dt_end_format = dt_end.format("%Y-%m-%dT%H:%M:%S").to_string();
+        info!("start {} end {} epic {}", dt_start_format, dt_end_format, epic);
         let SessionState {
             ref xst, ref cst, ..
         } = &*self.session.lock().await;

@@ -256,7 +256,7 @@ pub struct CreateWorkingOrderRequest {
     pub level: f64,
     #[serde(rename = "limitDistance")]
     pub limit_distance: f64,
-    pub size: u8,
+    pub size: f64,
     #[serde(rename = "stopDistance")]
     pub stop_distance: f64,
     #[serde(rename = "timeInForce")]
@@ -274,7 +274,7 @@ impl Default for CreateWorkingOrderRequest {
             epic: "IX.D.DAX.IFMM.IP".to_string(),
             expiry: "-".to_string(),
             direction: Direction::BUY,
-            size: 0,
+            size: 0.,
             working_order_type: WorkingOrderType::LIMIT,
             level: 0.,
             guaranteed_stop: false,

@@ -168,6 +168,9 @@ impl OpeningRange {
     pub fn range_size(&self) -> f64 {
         self.get_middle_price_high() - self.get_middle_price_low()
     }
+    pub fn spread(&self) -> f64 {
+        self.low_ask - self.low_bid
+    }
 }
 
 #[derive(Debug)]
@@ -197,10 +200,14 @@ impl System {
             },
             // AwaitData -> DecideOrderPlacement []
             (System::AwaitData(val), Event::Data { prices, .. }) if !prices.is_empty() => {
+                if prices.len() != val.market_info.bars_in_opening_range {
+                    error!("Opening range bars are {} expected {}", prices.len(), val.market_info.bars_in_opening_range);
+                }
                 let opening_range = create_opening_range_from_ohlcs(prices);
                 // We add +1 since we always want to leave a 1pip open in the or channel for orders to open in between mode
                 // since we can use 1R and 2R in decide order placement that leave 1pip left.
-                if (opening_range.range_size() >= ((val.market_info.min_stop * OPENING_RANGE_MULTIPLIER) + 1.)) && (opening_range.range_size() <= (((  val.market_info.min_stop * val.market_info.max_stop_multiplier) * OPENING_RANGE_MULTIPLIER) + 1.)) {
+                // NOW I DONT HAVE 2X so remove +1
+                if (opening_range.range_size() >= ((val.market_info.min_stop * OPENING_RANGE_MULTIPLIER))) && (opening_range.range_size() <= (((  val.market_info.min_stop * val.market_info.max_stop_multiplier) * OPENING_RANGE_MULTIPLIER))) {
                     info!("Trading range is {} for {}", opening_range.range_size(), val.market_info.epic);
                     let mut new_state: SystemMachine<DecideOrderPlacement> = val.into();
                     new_state.state.opening_range = opening_range;
@@ -235,11 +242,11 @@ impl System {
                 let stop_distance = val.market_info.stop_distance(val.state.opening_range.range_size());
                 let command = Command::CreateWorkingOrder {
                     direction: Direction::BUY,
-                    price: val.state.opening_range.high_ask,
+                    price: val.state.opening_range.high_ask + val.state.opening_range.spread(), // I add spread since i noticed so many trade just outside my line
                     reference: OrderReference::OVER_LONG,
                     market_info: val.market_info.clone(),
-                    stop_distance,
                     target_distance: stop_distance * RISK_REWARD_RATION,
+                    stop_distance,
                 };
                 let market_info_clone = val.market_info.clone(); // TODO should save a reference to market_info not clone it
                 let opening_range_clone = val.state.opening_range.clone(); // TODO should save a reference to market_info not clone it
@@ -266,7 +273,7 @@ impl System {
                 let commands = vec![
                     Command::CreateWorkingOrder {
                         direction: Direction::BUY,
-                        price: val.state.opening_range.low_ask,
+                        price: val.state.opening_range.low_ask + val.state.opening_range.spread(),
                         reference: OrderReference::BETWEEN_LONG,
                         market_info: val.market_info.clone(),
                         stop_distance,
@@ -274,7 +281,7 @@ impl System {
                     },
                     Command::CreateWorkingOrder {
                         direction: Direction::SELL,
-                        price: val.state.opening_range.high_bid,
+                        price: val.state.opening_range.high_bid - val.state.opening_range.spread(),
                         reference: OrderReference::BETWEEN_SHORT,
                         market_info: val.market_info.clone(),
                         stop_distance,
@@ -308,7 +315,7 @@ impl System {
                 let stop_distance = val.market_info.stop_distance(val.state.opening_range.range_size());
                 let command = Command::CreateWorkingOrder {
                     direction: Direction::SELL,
-                    price: val.state.opening_range.low_bid,
+                    price: val.state.opening_range.low_bid - val.state.opening_range.spread(),
                     reference: OrderReference::UNDER_SHORT,
                     market_info: val.market_info.clone(),
                     stop_distance,
@@ -392,7 +399,7 @@ fn create_fetch_data_command(market_info: &MarketInfo) -> Command {
     Command::FetchData {
         epic: market_info.epic.clone(),
         start: market_info.utc_open_time,
-        duration: Duration::minutes(market_info.bars_in_opening_range as i64),
+        duration: Duration::minutes((market_info.bars_in_opening_range - 1) as i64),
     }
 }
 

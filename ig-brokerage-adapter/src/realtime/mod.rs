@@ -33,7 +33,7 @@ impl IgStreamClient {
         Self { session, tx }
     }
 
-    pub async fn start(&self, connection_details: ConnectionDetails, markets: Vec<MarketInfo>) -> Result<(), BrokerageError> {
+    pub async fn start(&self, connection_details: ConnectionDetails, epics: Vec<String>) -> Result<(), BrokerageError> {
         let SessionState {
             ref xst,
             ref cst,
@@ -60,7 +60,7 @@ impl IgStreamClient {
         });
 
         tokio::spawn(async move {
-            let mut subscription_manager = SubscriptionManager::new(markets);
+            let mut subscription_manager = SubscriptionManager::new(epics);
             while let Some(Ok(m)) = read.next().await {
                 let data = m.into_text().unwrap();
                 let messages = data.split_terminator("\r\n");

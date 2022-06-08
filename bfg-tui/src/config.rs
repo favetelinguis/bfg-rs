@@ -18,11 +18,11 @@ pub struct InternalMarketInfo {
     pub currency: String,
     pub min_stop: f64,
     pub max_stop_multiplier: f64,
-    pub lot_size: u8,
+    pub lot_size: f64,
     pub utc_open_time: String,
     pub utc_close_time: String,
     pub non_trading_days: Vec<String>,
-    pub bars_in_opening_range: u8,
+    pub bars_in_opening_range: usize,
 }
 
 #[derive(Debug, Clone)]

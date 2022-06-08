@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use crate::errors::BrokerageError;
 use crate::realtime::models::{AccountUpdate, MarketUpdate, OpenPositionUpdate, RestDetails, TradeConfirmationUpdate, WorkingOrderUpdate};
 use crate::realtime::IgStreamClient;
@@ -7,13 +8,17 @@ use bfg_core::models::{
     DataUpdate, Decision, FetchDataDetails,
     OhlcPrice, Price, TradeConfirmation, WorkingOrderDetails,
 };
-use log::error;
+use log::{error, info};
 use std::env;
+use std::ops::Add;
 use std::sync::Arc;
+use chrono::{Duration, Utc};
 use tokio::sync::mpsc::Sender;
 use tokio::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use bfg_core::decider::MarketInfo;
+use chrono_tz::Europe::{Stockholm};
+use tokio::time::{Instant, interval_at};
 
 pub mod errors;
 pub mod realtime;
@@ -27,6 +32,7 @@ pub enum RealtimeEvent {
     AccountPositionUpdate(OpenPositionUpdate),
     WorkingOrderUpdate(WorkingOrderUpdate),
     StreamStatus(String),
+    AtrEvent(String),
 }
 
 #[derive(Debug, Default)]
@@ -52,10 +58,11 @@ pub struct IgBrokerageApi {
     _session: Arc<Mutex<SessionState>>,
     pub rest: IgRestClient<HasSession>,
     _stream: IgStreamClient,
+    tx_out: Sender<RealtimeEvent>,
 }
 
 impl IgBrokerageApi {
-    pub async fn new(connection_details: ConnectionDetails, market_infos: Vec<MarketInfo>, tx_out: Sender<RealtimeEvent>) -> Self {
+    pub async fn new(connection_details: ConnectionDetails, epics: Vec<String>, tx_out: Sender<RealtimeEvent>) -> Self {
         let session = Arc::new(Mutex::new(SessionState::default()));
 
         // Setup a session with rest client and make sure stream has proper connection details
@@ -63,14 +70,37 @@ impl IgBrokerageApi {
         let connected_rest = disconnected_rest.create_session().await.unwrap();
 
         // Connect to stream and setup subscriptions
-        let stream = IgStreamClient::new(Arc::clone(&session), tx_out);
-        stream.start(connection_details, market_infos).await.unwrap();
+        let stream = IgStreamClient::new(Arc::clone(&session), tx_out.clone());
+        stream.start(connection_details, epics).await.unwrap();
 
         Self {
             _session: session,
             rest: connected_rest,
             _stream: stream,
+            tx_out,
         }
+    }
+    /// Sends out a Atr update event every 30 min after market open for each market
+    pub fn schedule_atr_update(&self, markets: &[MarketInfo]) {
+        for m in markets {
+            let epic = m.epic.clone();
+            let tx_out_clone = self.tx_out.clone();
+            let now = Utc::now();
+            let five_min_after_open = m.utc_open_time.add(Duration::minutes(5));
+            let mut start_instant= Instant::now();
+            if now < five_min_after_open {
+                start_instant += five_min_after_open.signed_duration_since(Utc::now()).to_std().unwrap();
+            }
+            // TODO https://users.rust-lang.org/t/what-is-the-best-way-to-run-scheduled-concurrent-tasks-in-rust/43931
+            // I want to combine this first delay until 5min and 5 sec after open then send ATR each 30 min until 5min before close then break look and send a Realtime::End(Epic)
+            let mut interval = interval_at(start_instant, core::time::Duration::from_secs(60 * 30));
+            tokio::spawn(async move {
+                while let tick = interval.tick().await {
+                    tokio::time::sleep(core::time::Duration::from_secs(5)); // Sleep some just to make sure IG has the latests candle when i query
+                    tx_out_clone.send(RealtimeEvent::AtrEvent(epic.clone())).await.unwrap();
+                }
+            });
+        };
     }
 }
 
