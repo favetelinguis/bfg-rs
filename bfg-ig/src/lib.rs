@@ -165,8 +165,8 @@ pub fn spawn_bfg(connection_details: ConnectionDetails, market_infos: Vec<Market
                     None
                 },
                 RealtimeEvent::AtrEvent(epic) => {
-                    let start = Utc::now().with_second(0).unwrap().sub(Duration::minutes(4));
-                    if let Ok(data) = brokerage.rest.fetch_data(epic.as_str(), start, Duration::minutes(5)).await {
+                    let start = Utc::now().with_second(0).unwrap().sub(Duration::minutes(15));
+                    if let Ok(data) = brokerage.rest.fetch_data(epic.as_str(), start, Duration::minutes(15)).await {
                         // info!("response is {:?}", data);
                         let atr = calculate_atr(extract_prices(data));
                         // Some((epic, Event::Atr {atr}))
@@ -305,8 +305,8 @@ pub fn spawn_bfg(connection_details: ConnectionDetails, market_infos: Vec<Market
 }
 
 fn calculate_atr(prices: Vec<OhlcPrice>) -> f64 {
-    if prices.len() != 5 {
-        error!("5 periods are required for ATR calculation but {} is provided", prices.len());
+    if prices.len() < 14 {
+        error!("more then 14 periods are required for ATR calculation but {} is provided", prices.len());
     }
     let mut indicator = AverageTrueRange::new(5).unwrap();
     let mut latest_atr = Default::default();
