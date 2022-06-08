@@ -401,7 +401,7 @@ fn is_price_over(stop_distance: f64, opening_range: &OpeningRange, bid: f64, ask
     let buffer: f64;
     if let Some(OrderReference::BETWEEN_SHORT | OrderReference::UNDER_SHORT) = last_trade_reference {
         // We have twice the buffer when changing direction
-        buffer = stop_distance as f64 * 2.;
+        buffer = stop_distance as f64 * 1.; //* 2.; // We only have 1x for both buffers now
     } else {
         buffer = stop_distance as f64;
     }
@@ -416,11 +416,11 @@ fn is_price_between(stop_distance: f64, opening_range: &OpeningRange, bid: f64, 
     let mut short_buffer = stop_distance as f64;
     // To change direction we require twice the buffer
     if let Some(OrderReference::BETWEEN_LONG | OrderReference::OVER_LONG) = last_trade_reference {
-        short_buffer = 2. * stop_distance as f64;
+        short_buffer = 1. * stop_distance as f64;
     }
     // To change direction we require twice the buffer
     if let Some(OrderReference::BETWEEN_SHORT | OrderReference::UNDER_SHORT) = last_trade_reference {
-        long_buffer = 2. * stop_distance as f64;
+        long_buffer = 1. * stop_distance as f64;
     }
     (level < (opening_range.get_middle_price_high() - short_buffer))
         && (level > (opening_range.get_middle_price_low() + long_buffer))
@@ -431,7 +431,7 @@ fn is_price_under(stop_distance: f64, opening_range: &OpeningRange, bid: f64, as
     let buffer;
     if let Some(OrderReference::BETWEEN_LONG | OrderReference::OVER_LONG) = last_trade_reference {
         // We have twice the buffer when changing direction
-        buffer = stop_distance as f64 * 2.;
+        buffer = stop_distance as f64 * 1.;
     } else {
         buffer = stop_distance as f64;
     }
