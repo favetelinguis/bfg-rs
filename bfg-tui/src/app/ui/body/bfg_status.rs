@@ -31,7 +31,7 @@ where
         .constraints([Constraint::Percentage(75), Constraint::Percentage(25)].as_ref())
         .split(body_chunks[1]);
 
-    let market= draw_market_view(&app.markets.markets);
+    let market= draw_market_view(&app.markets.markets, &app.markets.atrs);
     let results = draw_results_view(app.results.borrow());
     let system = draw_system_view(&app.systems.systems);
     let account = draw_account_view(app.account.borrow());
@@ -41,7 +41,7 @@ where
     rect.render_widget(account, system_account_chunks[1]);
 }
 
-pub fn draw_market_view<'a>(views: &HashMap<String, MarketView>) -> Table<'a> {
+pub fn draw_market_view<'a>(views: &HashMap<String, MarketView>, atrs: &HashMap<String, f64>) -> Table<'a> {
     let header_style = Style::default().fg(Color::LightCyan);
     let row_style = Style::default().fg(Color::Gray);
 
@@ -51,6 +51,7 @@ pub fn draw_market_view<'a>(views: &HashMap<String, MarketView>) -> Table<'a> {
         Cell::from(Span::styled("Bid", header_style)),
         Cell::from(Span::styled("Ask", header_style)),
         Cell::from(Span::styled("Spread", header_style)),
+        Cell::from(Span::styled("ATR14", header_style)),
         Cell::from(Span::styled("State", header_style)),
         Cell::from(Span::styled("Delay", header_style)),
         Cell::from(Span::styled("Time", header_style)),
@@ -60,12 +61,14 @@ pub fn draw_market_view<'a>(views: &HashMap<String, MarketView>) -> Table<'a> {
     for (epic, view) in views { // Fake now but shows when we have multiple markets
         let bid = view.bid.unwrap_or_default();
         let ask = view.ask.unwrap_or_default();
+        let atr = atrs.get(epic).copied().unwrap_or_default();
         let spread = ask - bid;
         let row = Row::new(vec![
             Cell::from(Span::styled(format!("{:.8}..", view.epic), row_style)),
             Cell::from(Span::styled(format!("{:.1}", bid), row_style)),
             Cell::from(Span::styled(format!("{:.1}", ask), row_style)),
             Cell::from(Span::styled(format!("{:.1}", spread), row_style)),
+            Cell::from(Span::styled(format!("{:.1}", atr), row_style)),
             Cell::from(Span::styled(view.market_state.clone().unwrap_or_default(), row_style)),
             Cell::from(Span::styled(format!("{}", view.market_delay.unwrap_or_default()), row_style)),
             Cell::from(Span::styled(view.update_time.clone().unwrap_or_default(), row_style)),
@@ -81,11 +84,12 @@ pub fn draw_market_view<'a>(views: &HashMap<String, MarketView>) -> Table<'a> {
                 .title("Market"),
         )
         .widths(&[
-            Constraint::Percentage(15), // epic
+            Constraint::Percentage(10), // epic
             Constraint::Percentage(10), // bid
             Constraint::Percentage(10), // ask
             Constraint::Percentage(10), // spread
-            Constraint::Percentage(15), // state
+            Constraint::Percentage(10), // atr
+            Constraint::Percentage(10), // state
             Constraint::Percentage(10), // delay
             Constraint::Percentage(10), // time
         ])

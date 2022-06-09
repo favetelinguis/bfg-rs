@@ -59,6 +59,7 @@ async fn main() -> Result<()> {
                 IgEvent::AccountView(current_account) => gui.account = current_account,
                 IgEvent::TradesResultsView(result) => gui.add_trade_result(result),
                 IgEvent::ConnectionView(current_connection) => gui.connection_information = current_connection,
+                IgEvent::AtrView(epic, atr) => gui.markets.atr_update(epic, atr),
             }
         }
     });

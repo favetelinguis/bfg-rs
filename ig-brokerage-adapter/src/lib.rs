@@ -10,7 +10,7 @@ use bfg_core::models::{
 };
 use log::{error, info};
 use std::env;
-use std::ops::Add;
+use std::ops::{Add, Sub};
 use std::sync::Arc;
 use chrono::{Duration, Utc};
 use tokio::sync::mpsc::Sender;
@@ -18,7 +18,8 @@ use tokio::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use bfg_core::decider::MarketInfo;
 use chrono_tz::Europe::{Stockholm};
-use tokio::time::{Instant, interval_at};
+use tokio::select;
+use tokio::time::{Instant, interval_at, sleep_until};
 
 pub mod errors;
 pub mod realtime;
@@ -33,6 +34,7 @@ pub enum RealtimeEvent {
     WorkingOrderUpdate(WorkingOrderUpdate),
     StreamStatus(String),
     AtrEvent(String),
+    QuitSystem(String),
 }
 
 #[derive(Debug, Default)]
@@ -80,24 +82,35 @@ impl IgBrokerageApi {
             tx_out,
         }
     }
-    /// Sends out a Atr update event every 30 min after market open for each market
+    /// Schedule an ATR update 15 min after market open and then every 15 minutes, also schedule a
+    /// stop event and kills the ATR update 5 min before market close
     pub fn schedule_atr_update(&self, markets: &[MarketInfo]) {
         for m in markets {
             let epic = m.epic.clone();
-            let tx_out_clone = self.tx_out.clone();
+            let epic_clone = m.epic.clone();
+            let tx_out_atr = self.tx_out.clone();
+            let tx_out_close = self.tx_out.clone();
             let now = Utc::now();
             let fifteen_min_after_open = m.utc_open_time.add(Duration::minutes(15));
+            let five_min_before_close = m.utc_close_time.sub(Duration::minutes(5));
+            let five_min_before_close = Instant::now() + five_min_before_close.signed_duration_since(Utc::now()).to_std().unwrap();
             let mut start_instant= Instant::now();
             if now < fifteen_min_after_open {
                 start_instant += fifteen_min_after_open.signed_duration_since(Utc::now()).to_std().unwrap();
             }
-            // TODO https://users.rust-lang.org/t/what-is-the-best-way-to-run-scheduled-concurrent-tasks-in-rust/43931
-            // I want to combine this first delay until 5min and 5 sec after open then send ATR each 30 min until 5min before close then break look and send a Realtime::End(Epic)
             let mut interval = interval_at(start_instant, core::time::Duration::from_secs(60 * 30)); // Every 30 minutes since there is a api limit of 10k history/week so for 6 markets 30 min update is 8100 datapoints/week
             tokio::spawn(async move {
+
+            let atr_ticker = tokio::spawn(async move {
                 while let tick = interval.tick().await {
-                    tx_out_clone.send(RealtimeEvent::AtrEvent(epic.clone())).await.unwrap();
+                    tx_out_atr.send(RealtimeEvent::AtrEvent(epic_clone.clone())).await.unwrap();
                 }
+            });
+            let end = sleep_until(five_min_before_close);
+            select! {
+                _ = atr_ticker => {}
+                _ = end => tx_out_close.send(RealtimeEvent::QuitSystem(epic)).await.unwrap(),
+            }
             });
         };
     }

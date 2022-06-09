@@ -30,7 +30,8 @@ pub enum IgEvent {
     ConnectionView(ConnectionInformationView),
     TradesResultsView(TradeResultView),
     AccountView(AccountView),
-    SystemView(String, SystemView)
+    SystemView(String, SystemView),
+    AtrView(String, f64),
 }
 
 #[derive(Debug, Default)]
@@ -165,18 +166,22 @@ pub fn spawn_bfg(connection_details: ConnectionDetails, market_infos: Vec<Market
                     None
                 },
                 RealtimeEvent::AtrEvent(epic) => {
+                    warn!("ATR update for {}", epic);
                     let start = Utc::now().with_second(0).unwrap().sub(Duration::minutes(15));
-                    if let Ok(data) = brokerage.rest.fetch_data(epic.as_str(), start, Duration::minutes(15)).await {
-                        // info!("response is {:?}", data);
+                    let result = brokerage.rest.fetch_data(epic.as_str(), start, Duration::minutes(15)).await;
+                    if let Ok(data) = result {
                         let atr = calculate_atr(extract_prices(data));
+                        ig_tx.send(IgEvent::AtrView(epic.clone(), atr)).await.unwrap();
                         // Some((epic, Event::Atr {atr}))
-                        info!("5 period ATR for {} is {}", epic, atr);
-                        // TODO post atr to TUI and show in market view
                         None
-                    } else {
-                        info!("Error failure to update ATR for {}", epic);
+                    } else if let Err(BrokerageError(error)) = result {
                         None
-                    }
+                        // Some((epic, Event::Error(error)))
+                    } else { None }
+                }
+                RealtimeEvent::QuitSystem(epic) => {
+                    warn!("System quit for {}", epic);
+                    None
                 }
             };
 

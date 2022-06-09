@@ -115,7 +115,6 @@ impl IgRestClient<HasSession> {
         let dt_start_format = start.format("%Y-%m-%dT%H:%M:%S").to_string();
         let dt_end = start.add(duration);
         let dt_end_format = dt_end.format("%Y-%m-%dT%H:%M:%S").to_string();
-        info!("start {} end {} epic {}", dt_start_format, dt_end_format, epic);
         let SessionState {
             ref xst, ref cst, ..
         } = &*self.session.lock().await;

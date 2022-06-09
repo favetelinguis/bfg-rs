@@ -48,10 +48,14 @@ impl SystemViewCache {
 #[derive(Debug, Default)]
 pub struct MarketViewCache {
     markets: HashMap<String, MarketView>,
+    atrs: HashMap<String, f64>,
 }
 impl MarketViewCache {
     pub fn update(&mut self, epic: String, view: MarketView) {
         self.markets.insert(epic, view);
+    }
+    pub fn atr_update(&mut self, epic: String, atr: f64) {
+        self.atrs.insert(epic, atr);
     }
 }
 
