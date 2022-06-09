@@ -8,7 +8,7 @@ use bfg_core::models::{
     DataUpdate, Decision, FetchDataDetails,
     OhlcPrice, Price, TradeConfirmation, WorkingOrderDetails,
 };
-use log::{error, info};
+use log::{error, info, log, warn};
 use std::env;
 use std::ops::{Add, Sub};
 use std::sync::Arc;
@@ -86,32 +86,37 @@ impl IgBrokerageApi {
     /// stop event and kills the ATR update 5 min before market close
     pub fn schedule_atr_update(&self, markets: &[MarketInfo]) {
         for m in markets {
-            let epic = m.epic.clone();
-            let epic_clone = m.epic.clone();
-            let tx_out_atr = self.tx_out.clone();
-            let tx_out_close = self.tx_out.clone();
-            let now = Utc::now();
-            let fifteen_min_after_open = m.utc_open_time.add(Duration::minutes(15));
+            // If the market is closed this will fail
             let five_min_before_close = m.utc_close_time.sub(Duration::minutes(5));
-            let five_min_before_close = Instant::now() + five_min_before_close.signed_duration_since(Utc::now()).to_std().unwrap();
-            let mut start_instant= Instant::now();
-            if now < fifteen_min_after_open {
-                start_instant += fifteen_min_after_open.signed_duration_since(Utc::now()).to_std().unwrap();
-            }
-            let mut interval = interval_at(start_instant, core::time::Duration::from_secs(60 * 30)); // Every 30 minutes since there is a api limit of 10k history/week so for 6 markets 30 min update is 8100 datapoints/week
-            tokio::spawn(async move {
-
-            let atr_ticker = tokio::spawn(async move {
-                while let tick = interval.tick().await {
-                    tx_out_atr.send(RealtimeEvent::AtrEvent(epic_clone.clone())).await.unwrap();
+            if let Ok(five_min_before_close) = five_min_before_close.signed_duration_since(Utc::now()).to_std() {
+                let five_min_before_close = Instant::now() + five_min_before_close;
+                let epic = m.epic.clone();
+                let epic_clone = m.epic.clone();
+                let tx_out_atr = self.tx_out.clone();
+                let tx_out_close = self.tx_out.clone();
+                let now = Utc::now();
+                let fifteen_min_after_open = m.utc_open_time.add(Duration::minutes(15));
+                let mut start_instant= Instant::now();
+                if now < fifteen_min_after_open {
+                    start_instant += fifteen_min_after_open.signed_duration_since(Utc::now()).to_std().unwrap();
                 }
-            });
-            let end = sleep_until(five_min_before_close);
-            select! {
+                let mut interval = interval_at(start_instant, core::time::Duration::from_secs(60 * 30)); // Every 30 minutes since there is a api limit of 10k history/week so for 6 markets 30 min update is 8100 datapoints/week
+                tokio::spawn(async move {
+
+                    let atr_ticker = tokio::spawn(async move {
+                        while let tick = interval.tick().await {
+                            tx_out_atr.send(RealtimeEvent::AtrEvent(epic_clone.clone())).await.unwrap();
+                        }
+                    });
+                    let end = sleep_until(five_min_before_close);
+                    select! {
                 _ = atr_ticker => {}
                 _ = end => tx_out_close.send(RealtimeEvent::QuitSystem(epic)).await.unwrap(),
             }
-            });
+                });
+            } else {
+                warn!("Market is closed so no ATR updates will be activated for {}", m.epic.clone());
+            }
         };
     }
 }
