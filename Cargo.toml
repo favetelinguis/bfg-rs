@@ -1,0 +1,13 @@
+[workspace ]
+resolver = "2"
+members = [ "bfg-betfair", "bfg-cli", "bfg-core" ] 
+default-members = [ "bfg-cli" ]
+
+[workspace .package]
+version = "0.1.0"
+edition = "2021"
+
+[workspace .dependencies]
+thiserror = "1.0.61"
+anyhow = "1.0.86"
+log = "0.4.22"

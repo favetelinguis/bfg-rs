@@ -1,0 +1,5 @@
+/target
+.direnv/flake-inputs
+.direnv
+.envrc
+betfaircert
