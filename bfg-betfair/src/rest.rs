@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use anyhow::{Context, Result};
+use chrono::{DateTime, Utc};
 use reqwest::blocking::{Client, Response};
 use reqwest::{
     header::{HeaderMap, HeaderValue, ACCEPT, CONTENT_TYPE},
@@ -9,19 +10,26 @@ use reqwest::{
 
 use serde::Deserialize;
 
+#[derive(Deserialize, Debug)]
+struct ExampleResponseWithDate {
+    datestamp: DateTime<Utc>,
+}
+
 /// Status enum for logut and keep-alive
 #[derive(Deserialize, Debug)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 enum AuthStatus {
-    SUCCESS,
-    FAIL,
+    Success,
+    Fail,
 }
 
 /// Error enum for logut and keep-alive
 #[derive(Deserialize, Debug)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 enum AuthError {
-    INPUT_VALIDATION_ERROR,
-    INTERNAL_ERROR,
-    NO_SESSION,
+    InputValidationError,
+    InternalError,
+    NoSession,
 }
 
 // Represent the response after logging in
@@ -34,56 +42,58 @@ pub struct AuthResponse {
 }
 
 #[derive(Deserialize, Debug)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 enum BotLoginStatus {
-    SUCCESS,
-    ACCOUNT_ALREADY_LOCKED,
-    ACCOUNT_NOW_LOCKED,
-    ACCOUNT_PENDING_PASSWORD_CHANGE,
-    ACTIONS_REQUIRED,
-    AGENT_CLIENT_MASTER,
-    AGENT_CLIENT_MASTER_SUSPENDED,
-    AUTHORIZED_ONLY_FOR_DOMAIN_RO,
-    AUTHORIZED_ONLY_FOR_DOMAIN_SE,
-    BETTING_RESTRICTED_LOCATION,
-    CERT_AUTH_REQUIRED,
-    CHANGE_PASSWORD_REQUIRED,
-    CLOSED,
-    DANISH_AUTHORIZATION_REQUIRED,
-    DENMARK_MIGRATION_REQUIRED,
-    DUPLICATE_CARDS,
-    EMAIL_LOGIN_NOT_ALLOWED,
-    INPUT_VALIDATION_ERROR,
-    INTERNATIONAL_TERMS_ACCEPTANCE_REQUIRED,
-    INVALID_CONNECTIVITY_TO_REGULATOR_DK,
-    INVALID_CONNECTIVITY_TO_REGULATOR_IT,
-    INVALID_USERNAME_OR_PASSWORD,
-    ITALIAN_CONTRACT_ACCEPTANCE_REQUIRED,
-    ITALIAN_PROFILING_ACCEPTANCE_REQUIRED,
-    KYC_SUSPEND,
-    MULTIPLE_USERS_WITH_SAME_CREDENTIAL,
-    NOT_AUTHORIZED_BY_REGULATOR_DK,
-    NOT_AUTHORIZED_BY_REGULATOR_IT,
-    PENDING_AUTH,
-    PERSONAL_MESSAGE_REQUIRED,
-    SECURITY_QUESTION_WRONG_3X,
-    SECURITY_RESTRICTED_LOCATION,
-    SELF_EXCLUDED,
-    SPAIN_MIGRATION_REQUIRED,
-    SPANISH_TERMS_ACCEPTANCE_REQUIRED,
-    SUSPENDED,
-    SWEDEN_BANK_ID_VERIFICATION_REQUIRED,
-    SWEDEN_NATIONAL_IDENTIFIER_REQUIRED,
-    TELBET_TERMS_CONDITIONS_NA,
-    TEMPORARY_BAN_TOO_MANY_REQUESTS,
-    TRADING_MASTER,
-    TRADING_MASTER_SUSPENDED,
+    Success,
+    AccountAlreadyLocked,
+    AccountNowLocked,
+    AccountPendingPasswordChange,
+    ActionsRequired,
+    AgentClientMaster,
+    AgentClientMasterSuspended,
+    AuthorizedOnlyForDomainRo,
+    AuthorizedOnlyForDomainSe,
+    BettingRestrictedLocation,
+    CertAuthRequired,
+    ChangePasswordRequired,
+    Closed,
+    DanishAuthorizationRequired,
+    DenmarkMigrationRequired,
+    DuplicateCards,
+    EmailLoginNotAllowed,
+    InputValidationError,
+    InternationalTermsAcceptanceRequired,
+    InvalidConnectivityToRegulatorDk,
+    InvalidConnectivityToRegulatorIt,
+    InvalidUsernameOrPassword,
+    ItalianContractAcceptanceRequired,
+    ItalianProfilingAcceptanceRequired,
+    KycSuspend,
+    MultipleUsersWithSameCredential,
+    NotAuthorizedByRegulatorDk,
+    NotAuthorizedByRegulatorIt,
+    PendingAuth,
+    PersonalMessageRequired,
+    SecurityQuestionWrong3x,
+    SecurityRestrictedLocation,
+    SelfExcluded,
+    SpainMigrationRequired,
+    SpanishTermsAcceptanceRequired,
+    Suspended,
+    SwedenBankIdVerificationRequired,
+    SwedenNationalIdentifierRequired,
+    TelbetTermsConditionsNa,
+    TemporaryBanTooManyRequests,
+    TradingMaster,
+    TradingMasterSuspended,
 }
 
 // Represent the response bot login
 #[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct BotLoginResponse {
-    sessionToken: Option<String>,
-    loginStatus: BotLoginStatus,
+    session_token: Option<String>,
+    login_status: BotLoginStatus,
 }
 
 /// Login to betfair
@@ -125,7 +135,7 @@ pub fn login(url: &str, app_key: &str, username: &str, password: &str) -> Result
 }
 
 /// Keep alive to betfair
-pub fn keep_alive(url: &str, app_key: &str, token: &str) -> Result<LoginResponse> {
+pub fn keep_alive(url: &str, app_key: &str, token: &str) -> Result<AuthResponse> {
     let client = reqwest::blocking::Client::new();
     let mut headers = HeaderMap::new();
     headers.insert(ACCEPT, HeaderValue::from_str("application/json").unwrap());
@@ -135,12 +145,12 @@ pub fn keep_alive(url: &str, app_key: &str, token: &str) -> Result<LoginResponse
         .request(Method::POST, format!("{}/keepAlive", url))
         .headers(headers)
         .send()?
-        .json::<LoginResponse>()
+        .json::<AuthResponse>()
         .with_context(|| "keep-alive failed")
 }
 
 /// Logout to betfair
-pub fn logout(url: &str, app_key: &str, token: &str) -> Result<LoginResponse> {
+pub fn logout(url: &str, app_key: &str, token: &str) -> Result<AuthResponse> {
     let client = reqwest::blocking::Client::new();
     let mut headers = HeaderMap::new();
     headers.insert(ACCEPT, HeaderValue::from_str("application/json").unwrap());
@@ -150,7 +160,7 @@ pub fn logout(url: &str, app_key: &str, token: &str) -> Result<LoginResponse> {
         .request(Method::POST, format!("{}/logout", url))
         .headers(headers)
         .send()?
-        .json::<LoginResponse>()
+        .json::<AuthResponse>()
         .with_context(|| "logout failed")
 }
 

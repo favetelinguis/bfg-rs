@@ -11,3 +11,4 @@ edition = "2021"
 thiserror = "1.0.61"
 anyhow = "1.0.86"
 log = "0.4.22"
+chrono = {version = "0.4.38", features = ["serde"]}
